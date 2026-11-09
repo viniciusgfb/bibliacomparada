@@ -35,6 +35,12 @@ Os arquivos JSON precisam ter a estrutura de `ARC.json`: um array com 66 livros 
 
 A referência bíblica exibida começa em **1**; os índices internos começam em 0. Na comparação, se o capítulo de outra tradução tiver quantidade diferente de versículos, o aplicativo **não exibe uma correspondência possivelmente errada**. Mesmo com quantidades iguais, diferenças editoriais de versificação podem exigir um mapeamento adicional no futuro.
 
+## Seleção de traduções para comparação
+
+Na página **Catálogo**, todas as traduções começam marcadas para comparação. Cada visitante pode desmarcar ou marcar as traduções individualmente ou usar **Marcar todas** / **Desmarcar todas**. A escolha é armazenada no `localStorage` do próprio navegador, sem login e sem alterar as escolhas de outras pessoas. Traduções não publicadas não são exibidas na comparação, mesmo quando marcadas. A seleção não afeta a leitura individual.
+
+A tradução MENS foi removida do catálogo e não é carregada pelo aplicativo. Exclua `data/MENS.json` do repositório se ele estiver publicado.
+
 ## O que foi corrigido
 
 - Removida a importação manual e toda a dependência de IndexedDB.
@@ -48,15 +54,15 @@ A referência bíblica exibida começa em **1**; os índices internos começam e
 
 ## Limitações
 
-- O catálogo possui 18 traduções, mas somente `ARC.json` está incluído no pacote. Os outros textos devem ser adicionados por você.
+- O catálogo possui 17 traduções, mas somente `ARC.json` está incluído no pacote. Os outros textos devem ser adicionados por você.
 - Se publicar muitos arquivos JSON grandes, a primeira comparação pode consumir bastante internet e levar alguns segundos, porque baixa os arquivos das traduções disponíveis.
-- O GitHub Pages não fornece uma API de listagem da pasta; por isso o aplicativo procura os nomes das **18 siglas cadastradas**. Novas siglas além dessas exigem cadastrá-las no array `translations` em `app.js`.
+- O GitHub Pages não fornece uma API de listagem da pasta; por isso o aplicativo procura os nomes das **17 siglas cadastradas**. Novas siglas além dessas exigem cadastrá-las no array `translations` em `app.js`.
 - As diferenças de numeração entre traduções precisam ser revisadas caso a caso.
 - Confirme que possui direitos para disponibilizar publicamente cada tradução protegida.
 
 ## Atualização em aparelhos que já abriram a versão antiga
 
-O novo service worker usa cache `biblia-comparada-v3` e prioriza a rede. Se alguém ainda vir a interface antiga, feche e abra novamente a página, atualize e, se necessário, limpe os dados do site no navegador.
+O novo service worker usa cache `biblia-comparada-v5-selecao` e prioriza a rede. Se alguém ainda vir a interface antiga, feche e abra novamente a página, atualize e, se necessário, limpe os dados do site no navegador.
 
 ## Teste local
 

@@ -10,12 +10,30 @@ const translations = [
  ['NVI','Nova Versão Internacional','—','Biblica'],['NVT','Nova Versão Transformadora','2016','Mundo Cristão'],
  ['TB','Tradução Brasileira †','2010','SBB'],['BLIVRE','Bíblia Livre †','2018','—'],
  ['ALM1911','Almeida 1911 †','1911','—'],['OL','O Livro','2000','Biblica'],
- ['MENS','A Mensagem','2016','Editora Vida'],['VFL','Versão Fácil de Ler','2017','Bible League International']
+ ['VFL','Versão Fácil de Ler','2017','Bible League International']
 ];
 const state = {page:'home', mode:'read', translation:'ARC', book:0, chapter:0, verse:0};
 const library = Object.create(null);
 const availability = Object.create(null);
 const inFlight = Object.create(null);
+const comparisonPreferenceKey = 'biblia-comparada-comparison-selection-v1';
+// Ausência de preferência significa que todas as traduções estão selecionadas.
+function readComparisonPreferences(){
+ try {
+  const saved=JSON.parse(localStorage.getItem(comparisonPreferenceKey)||'{}');
+  if(!saved||typeof saved!=='object'||Array.isArray(saved))return {};
+  return Object.fromEntries(translations.map(t=>t[0]).filter(code=>saved[code]===false).map(code=>[code,false]));
+ }catch(error){return {};}
+}
+const comparisonPreferences = readComparisonPreferences();
+function isSelected(code){return comparisonPreferences[code]!==false;}
+function setSelected(code,selected){
+ if(!translations.some(t=>t[0]===code))return;
+ if(selected)delete comparisonPreferences[code];else comparisonPreferences[code]=false;
+ try{localStorage.setItem(comparisonPreferenceKey,JSON.stringify(comparisonPreferences));}
+ catch(error){notify('Seleção alterada, mas não foi possível salvá-la neste navegador.');}
+}
+
 let books = [], comparisonRun = 0, toastTimer;
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[ch]));
 function notify(message) { const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),3500); }
@@ -103,18 +121,18 @@ function comparisonPage(){
  $('#prev').onclick=()=>moveVerse(-1);$('#next').onclick=()=>moveVerse(1);
  const draw=()=>{
   if(run!==comparisonRun||state.page!=='comparison')return;
-  const loaded=translations.filter(t=>library[t[0]]);
+  const loaded=translations.filter(t=>isSelected(t[0])&&library[t[0]]);
   $('#compare-count').textContent=`${loaded.length} tradução(ões)`;
   $('#comparison-results').innerHTML=loaded.map(t=>{
    const other=library[t[0]],otherBook=other.find(x=>x.abbrev===b.abbrev);
    const target=otherBook?.chapters?.[c],ref=target?.[v],sameCount=Array.isArray(target)&&target.length===b.chapters[c].length;
    const content=sameCount&&typeof ref==='string'?esc(ref):'<span class="hint">Referência indisponível ou com divisão de versículos diferente. Não exibimos texto potencialmente incorreto.</span>';
    return `<section class="compare-item"><b>${t[0]}</b><small>${esc(t[1])}</small><p>${content}</p></section>`;
-  }).join('')||'<p class="hint">Nenhuma tradução carregada.</p>';
+  }).join('')||(translations.some(t=>isSelected(t[0]))?'<p class="hint">Nenhuma tradução selecionada foi carregada.</p>':'<p class="hint">Nenhuma tradução selecionada. Abra o Catálogo e marque as traduções que deseja comparar.</p>');
  };
  draw();
  (async()=>{
-  const codes=translations.filter(t=>availability[t[0]]!==false&&!library[t[0]]).map(t=>t[0]);
+  const codes=translations.filter(t=>isSelected(t[0])&&availability[t[0]]!==false&&!library[t[0]]).map(t=>t[0]);
   let position=0;
   async function worker(){while(position<codes.length){const code=codes[position++];try{await loadTranslation(code);}catch(error){console.warn(code,error.message);}draw();}}
   await Promise.all(Array.from({length:Math.min(3,codes.length)},worker));
@@ -129,11 +147,19 @@ function moveVerse(delta){
  history.replaceState(snapshot(),'','#comparison');render();window.scrollTo(0,0);
 }
 function catalogPage(){
- heading('Traduções cadastradas','Ano e editora');
- main.innerHTML='<h2>Catálogo de traduções</h2><p class="hint">Os arquivos JSON publicados na pasta data do repositório ficam disponíveis para qualquer visitante, sem importar ou instalar nada.</p>'+
- translations.map(t=>`<div class="list-row"><span><b>${t[0]} — ${esc(t[1])}</b><small>${t[2]} · ${esc(t[3])}</small></span><span class="pill" data-status="${t[0]}">${status(t[0])}</span></div>`).join('')+
- '<div class="info"><b>Biblioteca online</b><p>O responsável pelo site adiciona arquivos como <code>data/NVI.json</code> e <code>data/ARA.json</code> no GitHub. Ao acessar ou atualizar o site, os visitantes poderão usar as traduções publicadas.</p></div>';
+ heading('Traduções cadastradas','Selecione para comparar');
+ const selectedCount=translations.filter(t=>isSelected(t[0])).length;
+ main.innerHTML=`<h2>Catálogo de traduções</h2>
+ <p class="hint">Marque as traduções que deseja ver na comparação. Todas começam selecionadas. As escolhas ficam salvas apenas neste navegador e não afetam a leitura individual.</p>
+ <div class="catalog-toolbar"><span id="selection-count" aria-live="polite">${selectedCount} de ${translations.length} selecionadas</span><button class="selection-action" id="select-all" type="button">Marcar todas</button><button class="selection-action" id="select-none" type="button">Desmarcar todas</button></div>
+ ${translations.map(t=>`<label class="list-row catalog-row"><span class="catalog-detail"><b>${t[0]} — ${esc(t[1])}</b><small>${t[2]} · ${esc(t[3])}</small><span class="pill catalog-status" data-status="${t[0]}">${status(t[0])}</span></span><span class="catalog-choice"><input type="checkbox" data-compare-code="${t[0]}" ${isSelected(t[0])?'checked':''} aria-label="Incluir ${esc(t[1])} na comparação"><span>Comparar</span></span></label>`).join('')}
+ <div class="info"><b>Biblioteca online</b><p>O responsável pelo site adiciona arquivos como <code>data/NVI.json</code> e <code>data/ARA.json</code> no GitHub. Traduções sem arquivo podem ficar marcadas, mas só aparecerão na comparação quando estiverem disponíveis.</p></div>`;
+ const refresh=()=>{$('#selection-count').textContent=`${translations.filter(t=>isSelected(t[0])).length} de ${translations.length} selecionadas`;};
+ main.querySelectorAll('[data-compare-code]').forEach(el=>el.onchange=()=>{setSelected(el.dataset.compareCode,el.checked);refresh();});
+ $('#select-all').onclick=()=>{translations.forEach(t=>setSelected(t[0],true));main.querySelectorAll('[data-compare-code]').forEach(el=>el.checked=true);refresh();};
+ $('#select-none').onclick=()=>{translations.forEach(t=>setSelected(t[0],false));main.querySelectorAll('[data-compare-code]').forEach(el=>el.checked=false);refresh();};
 }
+
 function updateStatuses(){document.querySelectorAll('[data-status]').forEach(el=>el.textContent=status(el.dataset.status));}
 function validate(data,code){
  if(!Array.isArray(data)||data.length!==66)throw Error('O JSON precisa conter 66 livros.');
