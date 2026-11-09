@@ -1,39 +1,67 @@
-# Bíblia Comparada — versão 0.1
+# Bíblia Comparada — versão corrigida para GitHub Pages
 
-Aplicativo web progressivo (PWA) para celular, com aparência preta, cinza e lilás.
+Este projeto funciona como **site comum** no navegador de qualquer visitante. Instalar na tela inicial é **opcional**. Não há importação de traduções pelo visitante, banco de dados remoto, IndexedDB ou necessidade de login.
 
-## Como executar
+## Publicar no GitHub Pages
 
-1. Extraia o ZIP.
-2. No terminal, entre na pasta `biblia-comparada`.
-3. Execute `python -m http.server 8000`.
-4. Abra `http://localhost:8000` no navegador do computador.
+1. Copie **o conteúdo desta pasta**, e não a pasta externa, para a raiz do repositório publicado pelo Pages. A raiz precisa conter `index.html`, `app.js`, `style.css`, `sw.js`, `manifest.webmanifest`, `icons/` e `data/`.
+2. Em **Settings > Pages**, configure a publicação para a branch e a pasta onde estão esses arquivos (por exemplo `main` e `/ (root)`).
+3. Aguarde a publicação e abra o endereço HTTPS fornecido pelo GitHub Pages. O app abre diretamente no navegador sem precisar ser instalado.
+4. Para adicionar traduções, envie arquivos `ACF.json`, `ARA.json`, `NVI.json`, etc. à pasta `data/`, com **sigla em letras maiúsculas**. Não é necessário editar `app.js` nem criar um arquivo de índice.
+5. Depois do upload, aguarde a atualização do Pages e recarregue a página. O navegador verifica a existência dos arquivos com requisições HEAD e baixa o conteúdo somente quando necessário.
 
-Para usar no iPhone ou Android, publique esta pasta em uma hospedagem HTTPS (por exemplo, Netlify ou GitHub Pages). Em Android, abra no Chrome e escolha **Instalar aplicativo**. Em iPhone, abra no Safari e escolha **Compartilhar > Adicionar à Tela de Início**.
+## Estrutura
 
-## Incluído
-
-- Arquivo ARC.json original fornecido, com 66 livros, 1.189 capítulos e 31.105 versículos.
-- Leitura integral por tradução, livro e capítulo.
-- Comparação por livro, capítulo e versículo.
-- Navegação sequencial por setas.
-- Catálogo com 18 traduções e seus metadados.
-- Importação local de JSON pelo navegador, persistida em IndexedDB.
-- Manifest, ícones e cache offline dos arquivos iniciais.
-
-## Formato dos arquivos adicionais
-
-Cada arquivo deve ter o nome da sigla, como `NVI.json`, e seguir o mesmo formato da ARC:
-
-```json
-[{"abbrev":"Gn","name":"Gênesis","chapters":[["Versículo 1","Versículo 2"]]}]
+```text
+index.html
+app.js
+style.css
+sw.js
+manifest.webmanifest
+icons/
+  icon.svg
+  icon-192.png
+  icon-512.png
+data/
+  ARC.json
+  ARA.json     (adicione quando tiver)
+  NVI.json     (adicione quando tiver)
+  ...
 ```
 
-O arquivo completo precisa conter 66 livros na mesma ordem e quantidade de capítulos da ARC. A importação valida a estrutura, mas **não** garante equivalência textual de numeração entre traduções. Para casos de versificação diferente, será necessário um mapeamento editorial de referências. Traduções protegidas por direitos autorais só devem ser distribuídas mediante licença ou autorização.
+## Regras dos arquivos
+
+Os arquivos JSON precisam ter a estrutura de `ARC.json`: um array com 66 livros na ordem tradicional, cada livro contendo `abbrev`, `name` e `chapters`. Cada capítulo é um array de strings, uma string por versículo. O aplicativo verifica a estrutura e as abreviações dos livros; não aceita arquivos com livros ou capítulos faltando.
+
+A referência bíblica exibida começa em **1**; os índices internos começam em 0. Na comparação, se o capítulo de outra tradução tiver quantidade diferente de versículos, o aplicativo **não exibe uma correspondência possivelmente errada**. Mesmo com quantidades iguais, diferenças editoriais de versificação podem exigir um mapeamento adicional no futuro.
+
+## O que foi corrigido
+
+- Removida a importação manual e toda a dependência de IndexedDB.
+- Detecção de JSONs publicados na pasta `data/` para todos os usuários.
+- Separação explícita entre modo de leitura e modo de comparação.
+- Navegação Voltar compatível com o botão do aplicativo e o histórico do navegador.
+- Leitura da tradução selecionada (não apenas da ARC).
+- Comparação com validação de capítulos e sem assumir texto de outra referência.
+- Service worker com preferência por dados novos da rede e cache de apoio offline.
+- Arquivos e caminhos relativos, compatíveis com repositórios publicados em subpastas no GitHub Pages.
 
 ## Limitações
 
-- Apenas a ARC está incluída inicialmente.
-- A comparação exibe as traduções efetivamente importadas, começando com ARC.
-- Os dados importados ficam apenas no navegador/dispositivo, sem sincronização.
-- A primeira versão não tem painel de administração remoto.
+- O catálogo possui 18 traduções, mas somente `ARC.json` está incluído no pacote. Os outros textos devem ser adicionados por você.
+- Se publicar muitos arquivos JSON grandes, a primeira comparação pode consumir bastante internet e levar alguns segundos, porque baixa os arquivos das traduções disponíveis.
+- O GitHub Pages não fornece uma API de listagem da pasta; por isso o aplicativo procura os nomes das **18 siglas cadastradas**. Novas siglas além dessas exigem cadastrá-las no array `translations` em `app.js`.
+- As diferenças de numeração entre traduções precisam ser revisadas caso a caso.
+- Confirme que possui direitos para disponibilizar publicamente cada tradução protegida.
+
+## Atualização em aparelhos que já abriram a versão antiga
+
+O novo service worker usa cache `biblia-comparada-v3` e prioriza a rede. Se alguém ainda vir a interface antiga, feche e abra novamente a página, atualize e, se necessário, limpe os dados do site no navegador.
+
+## Teste local
+
+```bash
+python -m http.server 8000
+```
+
+Abra `http://localhost:8000`. Não abra `index.html` diretamente com `file://`, pois o carregamento dos arquivos JSON exige HTTP(S).
