@@ -1,5 +1,5 @@
 // Atualizações online são prioritárias. Cache apenas para acesso offline opcional.
-const CACHE = 'biblia-comparada-v5-selecao';
+const CACHE = 'biblia-comparada-v6-navegacao';
 const SHELL = ['./','./index.html','./style.css','./app.js','./manifest.webmanifest','./icons/icon.svg','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install',event=>{
   self.skipWaiting();

@@ -35,16 +35,18 @@ function setSelected(code,selected){
 }
 
 let books = [], comparisonRun = 0, toastTimer;
+let floatingMenu = null;
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[ch]));
 function notify(message) { const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),3500); }
 function snapshot(){return {...state};}
-function navigate(target,changes={}) { Object.assign(state,changes,{page:target}); history.pushState(snapshot(),'','#'+target); render(); window.scrollTo(0,0); }
+function navigate(target,changes={}) { closeFloatingMenu(); Object.assign(state,changes,{page:target}); history.pushState(snapshot(),'','#'+target); render(); window.scrollTo(0,0); }
 function back(){if(history.state && history.state.page!=='home') history.back(); else navigate('home');}
 window.addEventListener('popstate', event=>{ Object.assign(state,event.state && event.state.page?event.state:{page:'home',mode:'read',translation:'ARC',book:0,chapter:0,verse:0});render();window.scrollTo(0,0); });
 function heading(title,subtitle='Português (Brasil)'){$('#title').textContent=title;$('#subtitle').textContent=subtitle;$('#back').classList.toggle('hidden',state.page==='home');}
 function book(){return books[state.book];}
 function start(mode){navigate(mode==='read'?'translations':'books',{mode,book:0,chapter:0,verse:0});}
 function render(){
+ closeFloatingMenu();
  const p=state.page;
  document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',(p==='home'?'home':p==='catalog'?'catalog':state.mode==='compare'?'compare':'read')===el.dataset.nav));
  if(p==='home')home();else if(p==='translations')translationList();else if(p==='books')booksPage();
@@ -57,13 +59,13 @@ function home(){
  <div class="actions"><button class="action" id="read"><span class="symbol">▱</span><span><strong>Tradução específica</strong><small>Leia a Bíblia em uma tradução</small></span></button>
  <button class="action" id="compare"><span class="symbol">⇄</span><span><strong>Comparar traduções</strong><small>Compare o mesmo versículo nas versões disponíveis</small></span></button></div>
  <button class="link" id="see-catalog">Visualizar todas as traduções cadastradas</button>
- <div class="info"><b>Leitura pelo navegador</b><p>O aplicativo funciona diretamente neste endereço, sem instalação. Adicioná-lo à tela inicial é opcional.</p><p>Os arquivos das traduções são publicados pelo administrador na pasta <code>data/</code> do GitHub.</p></div>`;
+`;
  $('#read').onclick=()=>start('read');$('#compare').onclick=()=>start('compare');$('#see-catalog').onclick=()=>navigate('catalog');
 }
 function status(code){return library[code]?'Disponível':availability[code]===true?'Disponível':availability[code]===false?'Sem arquivo':'Verificando…';}
 function translationList(){
  heading('Tradução específica','Escolha a tradução');
- main.innerHTML='<h2>Traduções cadastradas</h2><p class="hint">Traduções com JSON publicado na pasta data ficam disponíveis para todos os visitantes.</p>'+translations.map(t=>`<button class="list-row" data-translation="${t[0]}"><span><b>${t[0]} — ${esc(t[1])}</b><small>${t[2]} · ${esc(t[3])}</small></span><span class="pill" data-status="${t[0]}">${status(t[0])}</span></button>`).join('');
+ main.innerHTML='<h2>Traduções cadastradas</h2><p class="hint">Clique em uma tradução para ler o texto na íntegra.</p>'+translations.map(t=>`<button class="list-row" data-translation="${t[0]}"><span><b>${t[0]} — ${esc(t[1])}</b><small>${t[2]} · ${esc(t[3])}</small></span><span class="pill" data-status="${t[0]}">${status(t[0])}</span></button>`).join('');
  main.querySelectorAll('[data-translation]').forEach(el=>el.onclick=async()=>{
   const code=el.dataset.translation;
   if(availability[code]===false){notify(`Arquivo data/${code}.json não encontrado.`);return;}
@@ -96,8 +98,12 @@ function readerPage(){
  heading(b.name,`${state.translation} · Capítulo ${state.chapter+1}`);
  if(!verses){main.innerHTML='<p class="hint">Capítulo indisponível nesta tradução.</p>';return;}
  main.innerHTML=`<div class="reader-title"><h1>${esc(b.name)} ${state.chapter+1}</h1><span class="pill">${verses.length} versículos</span></div>
- <article class="reader">${verses.map((v,i)=>`<p><sup>${i+1}</sup>${esc(v)}</p>`).join('')}</article>`+
+ <article class="reader">${verses.map((v,i)=>`<p class="interactive-verse" data-reader-verse="${i}" tabindex="0" role="button" aria-label="Comparar versículo ${i+1}"><sup>${i+1}</sup>${esc(v)}</p>`).join('')}</article>`+
  pager('CAPÍTULO',`${state.chapter+1} DE ${b.chapters.length}`,state.book>0||state.chapter>0,state.book<65||state.chapter<b.chapters.length-1);
+ main.querySelectorAll('[data-reader-verse]').forEach(el=>{
+  const show=()=>showFloatingMenu(el,'Comparar traduções',()=>navigate('comparison',{mode:'compare',verse:Number(el.dataset.readerVerse)}));
+  el.onclick=show;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}};
+ });
  $('#prev').onclick=()=>moveChapter(-1);$('#next').onclick=()=>moveChapter(1);
 }
 function moveChapter(delta){
@@ -114,27 +120,42 @@ function versesPage(){
 }
 function comparisonPage(){
  const b=book(),v=state.verse,c=state.chapter,run=++comparisonRun;
+ const selected=translations.filter(t=>isSelected(t[0]));
+ // Only translations the visitor selected contribute to progress.
+ const total=selected.length;
  heading(`${b.name} ${c+1}:${v+1}`,'Comparação de traduções');
- main.innerHTML=`<div class="reader-title"><h1>${esc(b.name)} ${c+1}:${v+1}</h1><span class="pill" id="compare-count">Carregando…</span></div>
- <div id="comparison-results"><p class="hint">Consultando traduções publicadas…</p></div>`+
+ main.innerHTML=`<div class="reader-title"><h1>${esc(b.name)} ${c+1}:${v+1}</h1></div>
+ <div class="comparison-loading" role="group" aria-label="Progresso do carregamento das traduções">
+  <div class="progress-track" role="progressbar" aria-label="Traduções carregadas" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="comparison-progress"><div class="progress-fill" id="comparison-progress-fill"></div></div>
+  <span class="progress-label" id="comparison-progress-label" aria-live="polite">Carregando traduções…</span>
+ </div>
+ <div id="comparison-results"></div>`+
  pager('VERSÍCULO',`${v+1} DE ${b.chapters[c].length}`,state.book>0||c>0||v>0,state.book<65||c<b.chapters.length-1||v<b.chapters[c].length-1);
  $('#prev').onclick=()=>moveVerse(-1);$('#next').onclick=()=>moveVerse(1);
  const draw=()=>{
   if(run!==comparisonRun||state.page!=='comparison')return;
-  const loaded=translations.filter(t=>isSelected(t[0])&&library[t[0]]);
-  $('#compare-count').textContent=`${loaded.length} tradução(ões)`;
+  const loaded=selected.filter(t=>library[t[0]]);
+  const finished=selected.filter(t=>library[t[0]]||availability[t[0]]===false);
+  const pct=total?Math.round(finished.length/total*100):100;
+  const bar=$('#comparison-progress');bar.setAttribute('aria-valuenow',String(pct));
+  $('#comparison-progress-fill').style.width=pct+'%';
+  $('#comparison-progress-label').textContent=total===0?'Selecione traduções no catálogo':pct===100?'Carregamento concluído': 'Carregando traduções…';
   $('#comparison-results').innerHTML=loaded.map(t=>{
    const other=library[t[0]],otherBook=other.find(x=>x.abbrev===b.abbrev);
    const target=otherBook?.chapters?.[c],ref=target?.[v],sameCount=Array.isArray(target)&&target.length===b.chapters[c].length;
    const content=sameCount&&typeof ref==='string'?esc(ref):'<span class="hint">Referência indisponível ou com divisão de versículos diferente. Não exibimos texto potencialmente incorreto.</span>';
-   return `<section class="compare-item"><b>${t[0]}</b><small>${esc(t[1])}</small><p>${content}</p></section>`;
-  }).join('')||(translations.some(t=>isSelected(t[0]))?'<p class="hint">Nenhuma tradução selecionada foi carregada.</p>':'<p class="hint">Nenhuma tradução selecionada. Abra o Catálogo e marque as traduções que deseja comparar.</p>');
+   return `<section class="compare-item interactive-translation" data-open-translation="${t[0]}" tabindex="0" role="button" aria-label="Abrir ${esc(t[1])} no capítulo completo"><b>${t[0]}</b><small>${esc(t[1])}</small><p>${content}</p></section>`;
+  }).join('')||(total?'<p class="hint">Aguardando as traduções selecionadas…</p>':'<p class="hint">Nenhuma tradução selecionada. Abra o Catálogo e marque as traduções que deseja comparar.</p>');
+  main.querySelectorAll('[data-open-translation]').forEach(el=>{
+   const show=()=>showFloatingMenu(el,'Abrir tradução',()=>navigate('reader',{mode:'read',translation:el.dataset.openTranslation}));
+   el.onclick=show;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}};
+  });
  };
  draw();
  (async()=>{
-  const codes=translations.filter(t=>isSelected(t[0])&&availability[t[0]]!==false&&!library[t[0]]).map(t=>t[0]);
+  const codes=selected.filter(t=>availability[t[0]]!==false&&!library[t[0]]).map(t=>t[0]);
   let position=0;
-  async function worker(){while(position<codes.length){const code=codes[position++];try{await loadTranslation(code);}catch(error){console.warn(code,error.message);}draw();}}
+  async function worker(){while(position<codes.length){const code=codes[position++];try{await loadTranslation(code);}catch(error){console.warn(code,error.message);availability[code]=false;}draw();}}
   await Promise.all(Array.from({length:Math.min(3,codes.length)},worker));
   if(run===comparisonRun&&state.page==='comparison')draw();
  })();
@@ -153,13 +174,36 @@ function catalogPage(){
  <p class="hint">Marque as traduções que deseja ver na comparação. Todas começam selecionadas. As escolhas ficam salvas apenas neste navegador e não afetam a leitura individual.</p>
  <div class="catalog-toolbar"><span id="selection-count" aria-live="polite">${selectedCount} de ${translations.length} selecionadas</span><button class="selection-action" id="select-all" type="button">Marcar todas</button><button class="selection-action" id="select-none" type="button">Desmarcar todas</button></div>
  ${translations.map(t=>`<label class="list-row catalog-row"><span class="catalog-detail"><b>${t[0]} — ${esc(t[1])}</b><small>${t[2]} · ${esc(t[3])}</small><span class="pill catalog-status" data-status="${t[0]}">${status(t[0])}</span></span><span class="catalog-choice"><input type="checkbox" data-compare-code="${t[0]}" ${isSelected(t[0])?'checked':''} aria-label="Incluir ${esc(t[1])} na comparação"><span>Comparar</span></span></label>`).join('')}
- <div class="info"><b>Biblioteca online</b><p>O responsável pelo site adiciona arquivos como <code>data/NVI.json</code> e <code>data/ARA.json</code> no GitHub. Traduções sem arquivo podem ficar marcadas, mas só aparecerão na comparação quando estiverem disponíveis.</p></div>`;
+`;
  const refresh=()=>{$('#selection-count').textContent=`${translations.filter(t=>isSelected(t[0])).length} de ${translations.length} selecionadas`;};
  main.querySelectorAll('[data-compare-code]').forEach(el=>el.onchange=()=>{setSelected(el.dataset.compareCode,el.checked);refresh();});
  $('#select-all').onclick=()=>{translations.forEach(t=>setSelected(t[0],true));main.querySelectorAll('[data-compare-code]').forEach(el=>el.checked=true);refresh();};
  $('#select-none').onclick=()=>{translations.forEach(t=>setSelected(t[0],false));main.querySelectorAll('[data-compare-code]').forEach(el=>el.checked=false);refresh();};
 }
 
+function closeFloatingMenu(){
+ if(floatingMenu){floatingMenu.remove();floatingMenu=null;}
+}
+function showFloatingMenu(anchor,label,action){
+ if(floatingMenu?.dataset.anchor===anchor.dataset.readerVerse+'|'+anchor.dataset.openTranslation){closeFloatingMenu();return;}
+ closeFloatingMenu();
+ const menu=document.createElement('div');menu.className='floating-menu';
+ menu.dataset.anchor=anchor.dataset.readerVerse+'|'+anchor.dataset.openTranslation;
+ const button=document.createElement('button');button.type='button';button.textContent=label;
+ button.onclick=event=>{event.stopPropagation();closeFloatingMenu();action();};
+ menu.appendChild(button);document.body.appendChild(menu);floatingMenu=menu;
+ const r=anchor.getBoundingClientRect();
+ const width=menu.offsetWidth, height=menu.offsetHeight;
+ const left=Math.max(12,Math.min(window.innerWidth-width-12,r.left+(r.width-width)/2));
+ const top=r.bottom+height+12>window.innerHeight?Math.max(12,r.top-height-8):r.bottom+8;
+ menu.style.left=left+'px';menu.style.top=top+'px';
+}
+document.addEventListener('pointerdown',event=>{
+ if(floatingMenu&&!floatingMenu.contains(event.target)&&!event.target.closest('[data-reader-verse],[data-open-translation]'))closeFloatingMenu();
+});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeFloatingMenu();});
+window.addEventListener('scroll',closeFloatingMenu,{passive:true});
+window.addEventListener('resize',closeFloatingMenu);
 function updateStatuses(){document.querySelectorAll('[data-status]').forEach(el=>el.textContent=status(el.dataset.status));}
 function validate(data,code){
  if(!Array.isArray(data)||data.length!==66)throw Error('O JSON precisa conter 66 livros.');
@@ -196,6 +240,7 @@ document.querySelectorAll('[data-nav]').forEach(el=>el.onclick=()=>{
  const p=el.dataset.nav;if(p==='home')navigate('home');else if(p==='catalog')navigate('catalog');else start(p==='compare'?'compare':'read');
 });
 (async()=>{
+ main.innerHTML='<div class="initial-loading" role="status" aria-live="polite"><div class="loading-spinner" aria-hidden="true"></div><p>Carregando Bíblia…</p></div>';
  try{
   const response=await fetch('./data/ARC.json',{cache:'no-store'});
   if(!response.ok)throw Error(`Não foi possível carregar data/ARC.json (HTTP ${response.status}).`);

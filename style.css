@@ -2,3 +2,12 @@
 
 /* Seleção de traduções para comparação */
 .catalog-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:18px 0 8px}.catalog-toolbar #selection-count{font-size:13px;color:#d2c9d9;margin-right:auto}.selection-action{background:#42364e;color:#f2e9fa;border:1px solid #79658a;border-radius:5px;padding:9px 10px;font-size:12px}.catalog-row{cursor:pointer;min-height:86px}.catalog-detail{min-width:0;flex:1}.catalog-status{display:inline-block;margin-top:9px}.catalog-choice{display:flex;align-items:center;gap:8px;flex-shrink:0;color:#d5b9e8;font-size:12px}.catalog-choice input{width:22px;height:22px;accent-color:#b89bd0;cursor:pointer}.catalog-row:focus-within{outline:2px solid #b89bd0;outline-offset:-2px}@media(max-width:390px){.catalog-choice{flex-direction:column;gap:4px}.catalog-toolbar{gap:7px}}
+
+/* Indicador inicial e progresso da comparação */
+.initial-loading{min-height:55vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;color:#d9c7e6;font-size:15px}
+.loading-spinner{width:48px;height:48px;border:4px solid #4b4053;border-top-color:var(--purple);border-radius:50%;animation:bible-spin .85s linear infinite}
+@keyframes bible-spin{to{transform:rotate(360deg)}}
+.comparison-loading{margin:0 0 18px}.progress-track{height:11px;border-radius:20px;background:#403648;overflow:hidden;border:1px solid #665672}.progress-fill{height:100%;width:0;background:var(--purple);border-radius:20px;transition:width .25s ease}.progress-label{display:block;margin-top:7px;font-size:12px;color:#cfc3d8}
+.interactive-verse,.interactive-translation{cursor:pointer;border-radius:5px}.interactive-verse{padding:5px 7px;margin-left:-7px!important;margin-right:-7px!important}.interactive-verse:active,.interactive-translation:active{background:#302838}.interactive-verse:focus-visible,.interactive-translation:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.floating-menu{position:fixed;z-index:20;background:#383041;border:1px solid #a78cbd;box-shadow:0 8px 24px #000a;border-radius:9px;padding:6px;max-width:calc(100vw - 24px)}.floating-menu button{background:#574565;border-radius:6px;color:#fff;padding:11px 15px;font-size:14px;font-weight:600;white-space:nowrap}
+@media(prefers-reduced-motion:reduce){.loading-spinner{animation-duration:2s}.progress-fill{transition:none}}
