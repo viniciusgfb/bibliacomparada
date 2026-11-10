@@ -11,6 +11,3 @@
 .interactive-verse,.interactive-translation{cursor:pointer;border-radius:5px}.interactive-verse{padding:5px 7px;margin-left:-7px!important;margin-right:-7px!important}.interactive-verse:active,.interactive-translation:active{background:#302838}.interactive-verse:focus-visible,.interactive-translation:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
 .floating-menu{position:fixed;z-index:20;background:#383041;border:1px solid #a78cbd;box-shadow:0 8px 24px #000a;border-radius:9px;padding:6px;max-width:calc(100vw - 24px)}.floating-menu button{background:#574565;border-radius:6px;color:#fff;padding:11px 15px;font-size:14px;font-weight:600;white-space:nowrap}
 @media(prefers-reduced-motion:reduce){.loading-spinner{animation-duration:2s}.progress-fill{transition:none}}
-
-/* Indicador reservado exclusivamente às traduções católicas. */
-.catholic-cross{display:inline-block;margin-left:.3em;font-size:.92em;font-weight:600;color:var(--accent,#c4a87d);vertical-align:baseline}

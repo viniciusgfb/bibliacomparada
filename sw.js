@@ -1,5 +1,5 @@
 // Atualizações online são prioritárias. Cache apenas para acesso offline opcional.
-const CACHE = 'biblia-comparada-v10-catolicas-abreviacoes';
+const CACHE = 'biblia-comparada-v20-sem-catolicas';
 const SHELL = ['./','./index.html','./style.css','./app.js','./manifest.webmanifest','./icons/icon.svg','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install',event=>{
   self.skipWaiting();

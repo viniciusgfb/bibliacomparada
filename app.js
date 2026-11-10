@@ -2,105 +2,24 @@
 const $ = selector => document.querySelector(selector);
 const main = $('#content');
 const translations = [
- ['ACF','Almeida Corrigida e Fiel','1994','Sociedade Bíblica Trinitariana do Brasil'],
- ['ARA','Almeida Revista e Atualizada','1993','Sociedade Bíblica do Brasil'],
- ['ARC','Almeida Revista e Corrigida','1995','Sociedade Bíblica do Brasil'],
- ['AS21','Almeida Século 21','2009','Vida Nova'],
- ['JFAA','João Ferreira de Almeida Atualizada','—','Editora não confirmada'],
- ['KJA','King James Atualizada','2011','Abba Press'],
- ['KJF','King James Fiel','—','BVBooks'],
- ['NAA','Nova Almeida Atualizada','2017','Sociedade Bíblica do Brasil'],
- ['NBV','Nova Bíblia Viva','2007','Mundo Cristão'],
- ['NTLH','Nova Tradução na Linguagem de Hoje','1988','Sociedade Bíblica do Brasil'],
- ['NVI','Nova Versão Internacional','2000','Biblica'],
- ['NVT','Nova Versão Transformadora','2016','Mundo Cristão'],
- ['TB','Tradução Brasileira','2010','Sociedade Bíblica do Brasil'],
- ['BLIVRE','Bíblia Livre','2018','Editora não confirmada'],
- ['ALM1911','Almeida 1911','1911','Editora não confirmada'],
- ['OL','O Livro','2000','Biblica'],
+ ['ACF','Almeida Corrigida e Fiel','1994','SBTB'],['ARA','Almeida Revista e Atualizada','1993','SBB'],
+ ['ARC','Almeida Revista e Corrigida','1995','SBB'],['AS21','Almeida Século 21','2009','Vida Nova'],
+ ['JFAA','Almeida Atualizada','—','—'],['KJA','King James Atualizada','1999','Abba Press'],
+ ['KJF','King James Fiel','1611','BVBooks'],['NAA','Nova Almeida Atualizada','2017','SBB'],
+ ['NBV','Nova Bíblia Viva','2007','Mundo Cristão'],['NTLH','Nova Tradução na Linguagem de Hoje','1988','SBB'],
+ ['NVI','Nova Versão Internacional','—','Biblica'],['NVT','Nova Versão Transformadora','2016','Mundo Cristão'],
+ ['TB','Tradução Brasileira †','2010','SBB'],['BLIVRE','Bíblia Livre †','2018','—'],
+ ['ALM1911','Almeida 1911 †','1911','—'],['OL','O Livro','2000','Biblica'],
  ['VFL','Versão Fácil de Ler','2017','Bible League International'],
- ['AA','João Ferreira de Almeida Atualizada','—','Editora não confirmada'],
- ['RC69','Almeida Revista e Corrigida (1969)','1969','Sociedade Bíblica do Brasil'],
- ['BPT09','a Bíblia para todos — Edição Comum','2009','Sociedade Bíblica de Portugal'],
- ['AVM','Bíblia Ave-Maria','1959','Editora Ave-Maria'],
- ['MATOS','Bíblia de Matos Soares','1932','Paulus (edição brasileira)'],
- ['PASTORAL','Bíblia Sagrada — Edição Pastoral','1990','Paulus'],
+ ['AA','João Ferreira de Almeida Atualizada','—','—'],
+ ['RC69','Almeida Revista e Corrigida (1969)','1969','SBB'],
+ ['BPT09','A Bíblia para Todos — Edição Comum','2009','Sociedade Bíblica de Portugal'],
  ['NVI2011','Nova Versão Internacional (2011)','2011','Biblica']
 ];
-const catholicCodes = new Set(['AVM','MATOS','PASTORAL']);
-const mappedCodes = new Set(['AVM','MATOS','PASTORAL']);
-const guardedCodes = new Set(['AA','NVI2011','BPT09']);
-const catalogName = t => `${esc(t[0])} — ${esc(t[1])}${catholicCodes.has(t[0])?' <span class="catholic-cross" aria-label="Tradução católica" title="Tradução católica">†</span>':''}`;
-
 const state = {page:'home', mode:'read', translation:'ARC', book:0, chapter:0, verse:0};
 const library = Object.create(null);
 const availability = Object.create(null);
 const inFlight = Object.create(null);
-const mappingLibrary = Object.create(null);
-const refKey = (b,c,v) => `${b}:${c}:${v}`;
-const unsafeIdentityBooks = Object.create(null);
-function buildComparisonGuards(code,data){
- if(!guardedCodes.has(code))return;
- const blocked=new Set();
- for(let b=0;b<66;b++){
-  const base=books[b].chapters,other=data[b].chapters;
-  if(code==='BPT09'){
-   if(base.length!==other.length||base.some((ch,c)=>other[c]?.length!==ch.length))blocked.add(b);
-  }else{
-   for(let c=0;c<base.length;c++)if(base[c]?.length!==other[c]?.length)blocked.add(`${b}:${c}`);
-  }
- }
- // Psalms can contain numbered headings and shifts even where chapter lengths happen to match.
- if(code==='BPT09'){blocked.add(18);blocked.add(38);}
- unsafeIdentityBooks[code]=blocked;
-}
-function identityAllowed(code,b,c){const guard=unsafeIdentityBooks[code];return !guard||(!guard.has(b)&&!guard.has(`${b}:${c}`));}
-async function loadMapping(code){
- if(!catholicCodes.has(code))return null;
- if(mappingLibrary[code])return mappingLibrary[code];
- const response=await fetch(`./mappings/${code}.json`,{cache:'no-store'});
- if(!response.ok)throw Error(`Mapeamento ${code} indisponível.`);
- const data=await response.json();
- if(data.translation!==code||data.base!=='ARC'||!Array.isArray(data.entries))throw Error('Mapeamento inválido.');
- const forward=new Map(),reverse=new Map(),affected=new Set();
- for(const entry of data.entries){
-  const a=entry.arc,s=entry.source;
-  if(!Array.isArray(a)||!Array.isArray(s)||a.length!==3||s.length!==3||a[0]!==s[0]||![...a,...s].every(Number.isInteger))throw Error('Referência de mapeamento inválida.');
-  const ai=a.map(n=>n-1),si=s.map(n=>n-1),ak=refKey(...ai),sk=refKey(...si);
-  if(forward.has(ak)||reverse.has(sk))throw Error('Mapeamento com conflito de referências.');
-  forward.set(ak,{pos:si,status:entry.status});reverse.set(sk,ai);
-  affected.add(`${ai[0]}:${ai[1]}`);
- }
- mappingLibrary[code]={forward,reverse,affected};return mappingLibrary[code];
-}
-function resolveComparison(code,b,c,v){
- if(code==='ARC')return {pos:[b,c,v],kind:'identity'};
- const target=library[code];if(!target)return null;
- const source=target[b];if(!source)return null;
- const baseChapter=books[b]?.chapters[c];
- if(!catholicCodes.has(code)){
-  const ch=source.chapters[c];return identityAllowed(code,b,c)&&ch?.length===baseChapter?.length?{pos:[b,c,v],kind:'identity'}:null;
- }
- const mapping=mappingLibrary[code];if(!mapping)return null;
- const explicit=mapping.forward.get(refKey(b,c,v));
- if(explicit)return {pos:explicit.pos,kind:'mapped',status:explicit.status};
- // No implicit matching in known shifted chapters, Psalm numbering, Malachi, or corrupt Matos Genesis 11.
- if(b===18||b===38||(code==='MATOS'&&b===0&&c===10)||mapping.affected.has(`${b}:${c}`))return null;
- const ch=source.chapters[c];
- return ch?.length===baseChapter?.length?{pos:[b,c,v],kind:'identity'}:null;
-}
-function reverseReaderReference(code,b,c,v){
- if(code==='ARC')return [b,c,v];
- if(!catholicCodes.has(code)){
-  const base=books[b]?.chapters[c],ch=library[code]?.[b]?.chapters[c];
-  return identityAllowed(code,b,c)&&base&&ch?.length===base.length&&v<ch.length?[b,c,v]:null;
- }
- const mapping=mappingLibrary[code];
- const explicit=mapping?.reverse.get(refKey(b,c,v));if(explicit)return explicit;
- if(b===18||b===38||(code==='MATOS'&&b===0&&c===10)||mapping?.affected.has(`${b}:${c}`))return null;
- const chapter=library[code]?.[b]?.chapters[c];
- return chapter?.length===books[b]?.chapters[c]?.length?[b,c,v]:null;
-}
 const comparisonPreferenceKey = 'biblia-comparada-comparison-selection-v1';
 // Ausência de preferência significa que todas as traduções estão selecionadas.
 function readComparisonPreferences(){
@@ -129,6 +48,7 @@ function back(){if(history.state && history.state.page!=='home') history.back();
 window.addEventListener('popstate', event=>{ Object.assign(state,event.state && event.state.page?event.state:{page:'home',mode:'read',translation:'ARC',book:0,chapter:0,verse:0});render();window.scrollTo(0,0); });
 function heading(title,subtitle='Português (Brasil)'){$('#title').textContent=title;$('#subtitle').textContent=subtitle;$('#back').classList.toggle('hidden',state.page==='home');}
 function book(){return books[state.book];}
+function readerBook(){return library[state.translation]?.[state.book]||book();}
 function start(mode){navigate(mode==='read'?'translations':'books',{mode,book:0,chapter:0,verse:0});}
 function render(){
  closeFloatingMenu();
@@ -150,7 +70,7 @@ function home(){
 function status(code){return library[code]?'Disponível':availability[code]===true?'Disponível':availability[code]===false?'Sem arquivo':'Verificando…';}
 function translationList(){
  heading('Tradução específica','Escolha a tradução');
- main.innerHTML='<h2>Traduções cadastradas</h2><p class="hint">Clique em uma tradução para ler o texto na íntegra.</p>'+translations.map(t=>`<button class="list-row" data-translation="${t[0]}"><span><b>${catalogName(t)}</b><small>${t[2]} · ${esc(t[3])}</small></span><span class="pill" data-status="${t[0]}">${status(t[0])}</span></button>`).join('');
+ main.innerHTML='<h2>Traduções cadastradas</h2><p class="hint">Clique em uma tradução para ler o texto na íntegra.</p>'+translations.map(t=>`<button class="list-row" data-translation="${t[0]}"><span><b>${t[0]} — ${esc(t[1])}</b><small>${t[2]} · ${esc(t[3])}</small></span><span class="pill" data-status="${t[0]}">${status(t[0])}</span></button>`).join('');
  main.querySelectorAll('[data-translation]').forEach(el=>el.onclick=async()=>{
   const code=el.dataset.translation;
   if(availability[code]===false){notify(`Arquivo data/${code}.json não encontrado.`);return;}
@@ -173,29 +93,29 @@ function booksPage(){
  input.oninput=draw;draw();
 }
 function chaptersPage(){
- heading(book().name,'Escolha o capítulo');
- const chapters=state.mode==='read'?(library[state.translation]?.[state.book]?.chapters||book().chapters):book().chapters;
- main.innerHTML=`<div class="grid">${chapters.map((_,i)=>`<button class="number" data-chapter="${i}">${i+1}</button>`).join('')}</div><div class="info">ⓘ &nbsp; ${esc(book().name)} — ${chapters.length} capítulos</div>`;
+ const current=state.mode==='read'?readerBook():book();
+ heading(current.name,'Escolha o capítulo');
+ main.innerHTML=`<div class="grid">${current.chapters.map((_,i)=>`<button class="number" data-chapter="${i}">${i+1}</button>`).join('')}</div><div class="info">ⓘ &nbsp; ${esc(current.name)} — ${current.chapters.length} capítulos</div>`;
  main.querySelectorAll('[data-chapter]').forEach(el=>el.onclick=()=>navigate(state.mode==='read'?'reader':'verses',{chapter:Number(el.dataset.chapter),verse:0}));
 }
 function pager(type,total,hasPrev,hasNext){return `<div class="pager"><button id="prev" aria-label="Anterior" ${hasPrev?'':'disabled'}>‹</button><span>${type} ${total}</span><button id="next" aria-label="Próximo" ${hasNext?'':'disabled'}>›</button></div>`;}
 function readerPage(){
- const b=book(), verses=library[state.translation]?.[state.book]?.chapters?.[state.chapter];
+ const b=readerBook(), verses=library[state.translation]?.[state.book]?.chapters?.[state.chapter];
  heading(b.name,`${state.translation} · Capítulo ${state.chapter+1}`);
  if(!verses){main.innerHTML='<p class="hint">Capítulo indisponível nesta tradução.</p>';return;}
  main.innerHTML=`<div class="reader-title"><h1>${esc(b.name)} ${state.chapter+1}</h1><span class="pill">${verses.length} versículos</span></div>
  <article class="reader">${verses.map((v,i)=>`<p class="interactive-verse" data-reader-verse="${i}" tabindex="0" role="button" aria-label="Comparar versículo ${i+1}"><sup>${i+1}</sup>${esc(v)}</p>`).join('')}</article>`+
- pager('CAPÍTULO',`${state.chapter+1} DE ${library[state.translation][state.book].chapters.length}`,state.book>0||state.chapter>0,state.book<65||state.chapter<library[state.translation][state.book].chapters.length-1);
+ pager('CAPÍTULO',`${state.chapter+1} DE ${b.chapters.length}`,state.book>0||state.chapter>0,state.book<65||state.chapter<b.chapters.length-1);
  main.querySelectorAll('[data-reader-verse]').forEach(el=>{
-  const show=()=>showFloatingMenu(el,'Comparar traduções',()=>{const pos=reverseReaderReference(state.translation,state.book,state.chapter,Number(el.dataset.readerVerse));if(!pos){notify('Este versículo não possui correspondência segura na ARC.');return;}navigate('comparison',{mode:'compare',book:pos[0],chapter:pos[1],verse:pos[2]});});
+  const show=()=>showFloatingMenu(el,'Comparar traduções',()=>{const arc=books[state.book]?.chapters[state.chapter];if(!arc||arc.length!==verses.length){notify('Comparação indisponível: divisão de versículos diferente da ARC.');return;}navigate('comparison',{mode:'compare',verse:Number(el.dataset.readerVerse)});});
   el.onclick=show;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}};
  });
  $('#prev').onclick=()=>moveChapter(-1);$('#next').onclick=()=>moveChapter(1);
 }
 function moveChapter(delta){
  let next=state.chapter+delta;
- if(next<0){if(state.book===0)return;state.book--;state.chapter=library[state.translation][state.book].chapters.length-1;}
- else if(next>=library[state.translation][state.book].chapters.length){if(state.book===65)return;state.book++;state.chapter=0;}
+ if(next<0){if(state.book===0)return;state.book--;state.chapter=readerBook().chapters.length-1;}
+ else if(next>=readerBook().chapters.length){if(state.book===65)return;state.book++;state.chapter=0;}
  else state.chapter=next;
  history.replaceState(snapshot(),'','#reader');render();window.scrollTo(0,0);
 }
@@ -227,14 +147,13 @@ function comparisonPage(){
   $('#comparison-progress-fill').style.width=pct+'%';
   $('#comparison-progress-label').textContent=total===0?'Selecione traduções no catálogo':pct===100?'Carregamento concluído': 'Carregando traduções…';
   $('#comparison-results').innerHTML=loaded.map(t=>{
-   const other=library[t[0]],resolved=resolveComparison(t[0],state.book,c,v);
-   const pos=resolved?.pos,ref=pos?other[pos[0]]?.chapters[pos[1]]?.[pos[2]]:undefined;
-   const label=pos&&(pos[1]!==c||pos[2]!==v)?`<small>Referência nesta tradução: ${pos[1]+1}:${pos[2]+1} · correspondência sugerida pela auditoria</small>`:'';
-   const content=typeof ref==='string'?esc(ref)+label:'<span class="hint">Correspondência não estabelecida com segurança para esta referência.</span>';
-   return `<section class="compare-item interactive-translation" data-open-translation="${t[0]}" tabindex="0" role="button" aria-label="Abrir ${esc(t[1])} no capítulo completo"><b>${t[0]}</b><small>${esc(t[1])}${catholicCodes.has(t[0])?' †':''}</small><p>${content}</p></section>`;
+   const other=library[t[0]],otherBook=other.find(x=>x.abbrev===b.abbrev);
+   const target=otherBook?.chapters?.[c],ref=target?.[v],sameCount=Array.isArray(target)&&target.length===b.chapters[c].length;
+   const content=sameCount&&typeof ref==='string'?esc(ref):'<span class="hint">Referência indisponível ou com divisão de versículos diferente. Não exibimos texto potencialmente incorreto.</span>';
+   return `<section class="compare-item interactive-translation" data-open-translation="${t[0]}" tabindex="0" role="button" aria-label="Abrir ${esc(t[1])} no capítulo completo"><b>${t[0]}</b><small>${esc(t[1])}</small><p>${content}</p></section>`;
   }).join('')||(total?'<p class="hint">Aguardando as traduções selecionadas…</p>':'<p class="hint">Nenhuma tradução selecionada. Abra o Catálogo e marque as traduções que deseja comparar.</p>');
   main.querySelectorAll('[data-open-translation]').forEach(el=>{
-   const show=()=>showFloatingMenu(el,'Abrir tradução',()=>{const code=el.dataset.openTranslation;const match=resolveComparison(code,state.book,state.chapter,state.verse);if(!match){notify('Não há referência correspondente confirmada para abrir.');return;}navigate('reader',{mode:'read',translation:code,book:match.pos[0],chapter:match.pos[1]});});
+   const show=()=>showFloatingMenu(el,'Abrir tradução',()=>{const code=el.dataset.openTranslation;if(!library[code]?.[state.book]?.chapters?.[state.chapter]){notify('Capítulo indisponível nesta tradução.');return;}navigate('reader',{mode:'read',translation:code});});
    el.onclick=show;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}};
   });
  };
@@ -249,7 +168,7 @@ function comparisonPage(){
 }
 function moveVerse(delta){
  const b=book(),n=state.verse+delta;
- if(n<0){if(state.chapter>0){state.chapter--;state.verse=b.chapters[state.chapter].length-1;}else if(state.book>0){state.book--;state.chapter=book().chapters.length-1;state.verse=book().chapters[state.chapter].length-1;}else return;}
+ if(n<0){if(state.chapter>0){state.chapter--;state.verse=b.chapters[state.chapter].length-1;}else if(state.book>0){state.book--;state.chapter=readerBook().chapters.length-1;state.verse=book().chapters[state.chapter].length-1;}else return;}
  else if(n>=b.chapters[state.chapter].length){if(state.chapter<b.chapters.length-1){state.chapter++;state.verse=0;}else if(state.book<65){state.book++;state.chapter=0;state.verse=0;}else return;}
  else state.verse=n;
  history.replaceState(snapshot(),'','#comparison');render();window.scrollTo(0,0);
@@ -260,7 +179,7 @@ function catalogPage(){
  main.innerHTML=`<h2>Catálogo de traduções</h2>
  <p class="hint">Marque as traduções que deseja ver na comparação. Todas começam selecionadas. As escolhas ficam salvas apenas neste navegador e não afetam a leitura individual.</p>
  <div class="catalog-toolbar"><span id="selection-count" aria-live="polite">${selectedCount} de ${translations.length} selecionadas</span><button class="selection-action" id="select-all" type="button">Marcar todas</button><button class="selection-action" id="select-none" type="button">Desmarcar todas</button></div>
- ${translations.map(t=>`<label class="list-row catalog-row"><span class="catalog-detail"><b>${catalogName(t)}</b><small>${t[2]} · ${esc(t[3])}</small><span class="pill catalog-status" data-status="${t[0]}">${status(t[0])}</span></span><span class="catalog-choice"><input type="checkbox" data-compare-code="${t[0]}" ${isSelected(t[0])?'checked':''} aria-label="Incluir ${esc(t[1])} na comparação"><span>Comparar</span></span></label>`).join('')}
+ ${translations.map(t=>`<label class="list-row catalog-row"><span class="catalog-detail"><b>${t[0]} — ${esc(t[1])}</b><small>${t[2]} · ${esc(t[3])}</small><span class="pill catalog-status" data-status="${t[0]}">${status(t[0])}</span></span><span class="catalog-choice"><input type="checkbox" data-compare-code="${t[0]}" ${isSelected(t[0])?'checked':''} aria-label="Incluir ${esc(t[1])} na comparação"><span>Comparar</span></span></label>`).join('')}
 `;
  const refresh=()=>{$('#selection-count').textContent=`${translations.filter(t=>isSelected(t[0])).length} de ${translations.length} selecionadas`;};
  main.querySelectorAll('[data-compare-code]').forEach(el=>el.onchange=()=>{setSelected(el.dataset.compareCode,el.checked);refresh();});
@@ -296,7 +215,7 @@ function validate(data,code){
  if(!Array.isArray(data)||data.length!==66)throw Error('O JSON precisa conter 66 livros.');
  for(let i=0;i<66;i++){
   const b=data[i],base=books[i];
-  if(!b||String(b.abbrev).toUpperCase()!==String(base.abbrev).toUpperCase()||typeof b.name!=='string'||!Array.isArray(b.chapters)||(!catholicCodes.has(code)&&code!=='BPT09'&&b.chapters.length!==base.chapters.length))throw Error(`Livros ou capítulos incompatíveis em ${base.name}.`);
+  if(!b||b.abbrev!==base.abbrev||typeof b.name!=='string'||!Array.isArray(b.chapters))throw Error(`Livros ou capítulos incompatíveis em ${base.name}.`);
   for(let c=0;c<b.chapters.length;c++){
    const ch=b.chapters[c];
    if(!Array.isArray(ch)||ch.length===0||ch.some(v=>typeof v!=='string'||!v.trim()))throw Error(`Versículos inválidos em ${base.name} ${c+1}.`);
@@ -317,7 +236,7 @@ async function loadTranslation(code){
   const response=await fetch(`./data/${encodeURIComponent(code)}.json`,{cache:'no-store'});
   if(!response.ok){availability[code]=false;updateStatuses();throw Error(`data/${code}.json não encontrado (HTTP ${response.status}).`);}
   let json;try{json=await response.json();}catch(e){throw Error('O arquivo não contém JSON válido.');}
-  const checked=validate(json,code);buildComparisonGuards(code,checked);if(catholicCodes.has(code))await loadMapping(code);library[code]=checked;availability[code]=true;updateStatuses();return checked;
+  const checked=validate(json,code);library[code]=checked;availability[code]=true;updateStatuses();return checked;
  })();
  try{return await inFlight[code];}finally{delete inFlight[code];}
 }
