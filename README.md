@@ -33,3 +33,10 @@ Envie os arquivos e pastas do projeto para a raiz do repositório e ative **Sett
 5. Desligue a internet e teste a leitura e a comparação.
 
 O armazenamento pode exigir cerca de 100 MB ou mais. A primeira preparação exige internet; o navegador pode remover o cache ao liberar espaço ou quando os dados do site forem apagados. O cache offline não modifica textos bíblicos nem a lógica de comparação.
+
+
+## Pesquisa por palavra
+
+A aba **Pesquisa** busca palavras inteiras em todas as traduções marcadas em **Traduções**, ignorando acentos e diferenças entre maiúsculas e minúsculas. Exibe ocorrências, quantidade de versículos e progresso. Toque na tradução, em **Abrir tradução**, no versículo e em **Abrir capítulo** para ler o capítulo com a palavra e o versículo destacados.
+
+Na aba **Bíblia**, depois de escolher uma tradução, a busca acima da lista de livros pesquisa palavras apenas naquela tradução. A lista de livros permanece disponível abaixo. Ambas as buscas funcionam offline quando os JSONs estão armazenados no dispositivo.

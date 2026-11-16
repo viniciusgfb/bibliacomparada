@@ -1,5 +1,5 @@
 // Bíblia Comparada — cache offline progressivo para todas as 24 traduções do catálogo.
-const CACHE = 'biblia-comparada-v23-offline-24';
+const CACHE = 'biblia-comparada-v24-pesquisa-24';
 const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png'];
 const BIBLES = ['ARC', 'AA', 'RC69', 'BPT09', 'NVI2011', 'AVM', 'MATOS', 'PASTORAL'].map(code => `./data/${code}.json`);
 const PRECACHE = [...SHELL, ...BIBLES];

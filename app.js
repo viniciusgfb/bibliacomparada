@@ -46,7 +46,7 @@ async function downloadAllOffline(){
   // Espere o controlador do Service Worker: os JSONs ficam no mesmo cache que ele usa.
   await navigator.serviceWorker.ready;
   if(!navigator.serviceWorker.controller){offlineFailed=['Aguardando ativação do aplicativo'];return;}
-  const cache=await caches.open('biblia-comparada-v23-offline-24');
+  const cache=await caches.open('biblia-comparada-v24-pesquisa-24');
   const codes=translations.map(t=>t[0]);let cursor=0;
   async function worker(){while(cursor<codes.length){
    const code=codes[cursor++],url=`./data/${code}.json`;
@@ -79,7 +79,9 @@ function setSelected(code,selected){
  catch(error){notify('Seleção alterada, mas não foi possível salvá-la neste navegador.');}
 }
 
-let books = [], comparisonRun = 0, toastTimer;
+let books = [], comparisonRun = 0, searchRun = 0, toastTimer;
+const searchState={global:{query:'',results:[],done:0,total:0,working:false},local:{query:'',results:[],done:0,total:1,working:false}};
+let chapterHighlight=null;
 let floatingMenu = null;
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[ch]));
 function notify(message) { const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),3500); }
@@ -94,10 +96,11 @@ function start(mode){navigate(mode==='read'?'translations':'books',{mode,book:0,
 function render(){
  closeFloatingMenu();
  const p=state.page;
- document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',(p==='home'?'home':p==='catalog'?'catalog':state.mode==='compare'?'compare':'read')===el.dataset.nav));
+ document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',(p==='home'?'home':p==='catalog'?'catalog':p==='search'||p==='search-verses'?'search':state.mode==='compare'?'compare':'read')===el.dataset.nav));
  if(p==='home')home();else if(p==='translations')translationList();else if(p==='books')booksPage();
  else if(p==='chapters')chaptersPage();else if(p==='reader')readerPage();else if(p==='verses')versesPage();
  else if(p==='comparison')comparisonPage();else if(p==='catalog')catalogPage();
+ else if(p==='search')searchPage();else if(p==='search-verses')searchVersesPage();
 }
 function home(){
  heading('Bíblia Comparada');
@@ -123,16 +126,21 @@ function translationList(){
 }
 function booksPage(){
  heading('Livros da Bíblia',state.mode==='read'?state.translation:'Comparar traduções');
- main.innerHTML='<input class="search" id="filter" placeholder="Pesquisar livro" aria-label="Pesquisar livro"><div id="book-results"></div>';
- const input=$('#filter');
- function draw(){
-  const term=input.value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-  const matching=books.map((b,index)=>({...b,index})).filter(b=>(b.name+' '+b.abbrev).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(term));
-  const group=(items,title)=>`<h2>${title}</h2><div class="grid">${items.map(b=>`<button class="book" data-book="${b.index}">${esc(b.abbrev)}</button>`).join('')}</div>`;
-  $('#book-results').innerHTML=group(matching.filter(b=>b.index<39),'Escrituras Hebraico-Aramaicas')+group(matching.filter(b=>b.index>=39),'Escrituras Gregas Cristãs');
-  main.querySelectorAll('[data-book]').forEach(el=>el.onclick=()=>navigate('chapters',{book:Number(el.dataset.book),chapter:0,verse:0}));
+ if(state.mode==='read'){
+  main.innerHTML=`<h2>Pesquisar em ${esc(state.translation)}</h2><p class="hint">Busque uma palavra nesta tradução, sem diferenciar acentos ou maiúsculas.</p><form id="local-form" class="search-form"><input class="search" id="local-query" placeholder="Pesquisar palavra nos versículos" aria-label="Palavra para pesquisar" value="${esc(searchState.local.query)}"><button class="primary" type="submit">Pesquisar</button></form><div id="local-search-results"></div><h2>Escolher livro</h2><div id="book-results"></div>`;
+  $('#local-form').onsubmit=e=>{e.preventDefault();runSearch('local',$('#local-query').value);};
+  drawBookGrid();
+  drawSearchResults('local');
+ }else{
+  main.innerHTML='<h2>Escolher livro</h2><div id="book-results"></div>';
+  drawBookGrid();
  }
- input.oninput=draw;draw();
+}
+function drawBookGrid(){
+ const group=(items,title)=>`<h2>${title}</h2><div class="grid">${items.map((b,i)=>`<button class="book" data-book="${b.index}">${esc(b.abbrev)}</button>`).join('')}</div>`;
+ const indexed=books.map((b,index)=>({...b,index}));
+ $('#book-results').innerHTML=group(indexed.filter(b=>b.index<39),'Escrituras Hebraico-Aramaicas')+group(indexed.filter(b=>b.index>=39),'Escrituras Gregas Cristãs');
+ main.querySelectorAll('[data-book]').forEach(el=>el.onclick=()=>navigate('chapters',{book:Number(el.dataset.book),chapter:0,verse:0}));
 }
 function chaptersPage(){
  const current=state.mode==='read'?readerBook():book();
@@ -146,15 +154,16 @@ function readerPage(){
  heading(b.name,`${state.translation} · Capítulo ${state.chapter+1}`);
  if(!verses){main.innerHTML='<p class="hint">Capítulo indisponível nesta tradução.</p>';return;}
  main.innerHTML=`<div class="reader-title"><h1>${esc(b.name)} ${state.chapter+1}</h1><span class="pill">${verses.length} versículos</span></div>
- <article class="reader">${verses.map((v,i)=>`<p class="interactive-verse" data-reader-verse="${i}" tabindex="0" role="button" aria-label="Comparar versículo ${i+1}"><sup>${i+1}</sup>${esc(v)}</p>`).join('')}</article>`+
+ <article class="reader">${verses.map((v,i)=>`<p class="interactive-verse" data-reader-verse="${i}" tabindex="0" role="button" aria-label="Comparar versículo ${i+1}"><sup>${i+1}</sup>${chapterHighlight&&chapterHighlight.code===state.translation&&chapterHighlight.book===state.book&&chapterHighlight.chapter===state.chapter?highlightText(v,chapterHighlight.query):esc(v)}</p>`).join('')}</article>`+
  pager('CAPÍTULO',`${state.chapter+1} DE ${b.chapters.length}`,state.book>0||state.chapter>0,state.book<65||state.chapter<b.chapters.length-1);
  main.querySelectorAll('[data-reader-verse]').forEach(el=>{
   const show=()=>showFloatingMenu(el,'Comparar traduções',()=>{const arc=books[state.book]?.chapters[state.chapter];if(!arc||arc.length!==verses.length){notify('Comparação indisponível: divisão de versículos diferente da ARC.');return;}navigate('comparison',{mode:'compare',verse:Number(el.dataset.readerVerse)});});
   el.onclick=show;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}};
  });
+ if(chapterHighlight&&chapterHighlight.code===state.translation&&chapterHighlight.book===state.book&&chapterHighlight.chapter===state.chapter){const target=main.querySelector(`[data-reader-verse="${chapterHighlight.verse}"]`);if(target){target.classList.add('target-verse');requestAnimationFrame(()=>target.scrollIntoView({block:'center'}));}}
  $('#prev').onclick=()=>moveChapter(-1);$('#next').onclick=()=>moveChapter(1);
 }
-function moveChapter(delta){
+function moveChapter(delta){chapterHighlight=null;
  let next=state.chapter+delta;
  if(next<0){if(state.book===0)return;state.book--;state.chapter=readerBook().chapters.length-1;}
  else if(next>=readerBook().chapters.length){if(state.book===65)return;state.book++;state.chapter=0;}
@@ -215,6 +224,60 @@ function moveVerse(delta){
  else state.verse=n;
  history.replaceState(snapshot(),'','#comparison');render();window.scrollTo(0,0);
 }
+// Pesquisa por palavra inteira, ignorando caixa e diacríticos. Segmentação mantém as posições originais.
+const wordSegmenter=typeof Intl.Segmenter==='function'?new Intl.Segmenter('pt-BR',{granularity:'word'}):null;
+function normalizeWord(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');}
+function occurrences(text,query){
+ const wanted=normalizeWord(query.trim());if(!wanted)return [];
+ const tokens=wordSegmenter?[...wordSegmenter.segment(text)].filter(t=>t.isWordLike).map(t=>({word:t.segment,index:t.index})):Array.from(text.matchAll(/[\p{L}\p{N}]+/gu),m=>({word:m[0],index:m.index}));
+ return tokens.filter(t=>normalizeWord(t.word)===wanted).map(t=>({start:t.index,end:t.index+t.word.length}));
+}
+function highlightText(text,query){let matches=occurrences(text,query),cursor=0,html='';for(const m of matches){html+=esc(text.slice(cursor,m.start))+'<mark>'+esc(text.slice(m.start,m.end))+'</mark>';cursor=m.end;}return html+esc(text.slice(cursor));}
+function searchPage(){
+ heading('Pesquisa','Buscar nas traduções selecionadas');
+ const d=searchState.global;
+ main.innerHTML=`<form id="global-form" class="search-form"><input class="search" id="global-query" aria-label="Palavra para pesquisar" placeholder="Digite uma palavra (ex.: oracao)" value="${esc(d.query)}" required><button class="primary" type="submit">Pesquisar</button></form><p class="hint">Pesquisa por palavra inteira, sem diferenciar acentos ou maiúsculas. Utiliza as traduções marcadas em Traduções.</p><div id="global-search-results"></div>`;
+ $('#global-form').onsubmit=e=>{e.preventDefault();runSearch('global',$('#global-query').value);};drawSearchResults('global');
+}
+function searchVersesPage(){
+ const code=state.searchCode,source=state.searchSource||'global',d=searchState[source];
+ const item=d.results.find(r=>r.code===code);
+ heading('Resultados',`${code} · ${d.query}`);
+ if(!item){main.innerHTML='<p class="hint">Resultados indisponíveis. Faça uma nova pesquisa.</p>';return;}
+ main.innerHTML=`<h2>${esc(code)} — ${esc(d.query)}</h2><p class="hint">${item.count} ocorrências em ${item.verses.length} versículos. Toque no versículo para abrir o capítulo.</p><div id="verse-search-list"></div><button class="primary spaced" id="more-verses" type="button">Mostrar mais versículos</button>`;
+ let visible=0;
+ function more(){const end=Math.min(visible+60,item.verses.length),container=$('#verse-search-list');for(let i=visible;i<end;i++){const v=item.verses[i],el=document.createElement('section');el.className='compare-item interactive-translation';el.tabIndex=0;el.setAttribute('role','button');el.dataset.searchVerse=String(i);el.innerHTML=`<b>${esc(books[v.book].name)} ${v.chapter+1}:${v.verse+1}</b><p>${highlightText(v.text,d.query)}</p>`;container.appendChild(el);const show=()=>showFloatingMenu(el,'Abrir capítulo',()=>openSearchChapter(code,v,d.query));el.onclick=show;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}};}visible=end;$('#more-verses').hidden=visible>=item.verses.length;}
+ $('#more-verses').onclick=more;more();
+}
+function openSearchChapter(code,v,query){chapterHighlight={code,book:v.book,chapter:v.chapter,verse:v.verse,query};navigate('reader',{mode:'read',translation:code,book:v.book,chapter:v.chapter,verse:v.verse});}
+function drawSearchResults(kind){
+ const d=searchState[kind],container=document.querySelector(kind==='global'?'#global-search-results':'#local-search-results');if(!container)return;
+ if(!d.query){container.innerHTML='';return;}
+ const pct=d.total?Math.round(100*d.done/d.total):100;
+ container.innerHTML=`<h2>Resultados para “${esc(d.query)}”</h2><div class="comparison-loading"><div class="progress-track" role="progressbar" aria-label="Progresso da pesquisa" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div class="progress-fill" style="width:${pct}%"></div></div><span class="progress-label" aria-live="polite">${d.working?`Pesquisando ${d.done} de ${d.total} traduções…`:`Pesquisa concluída: ${d.done} de ${d.total} traduções.`}</span></div><div id="word-result-list"></div>`;
+ const list=container.querySelector('#word-result-list');
+ for(const item of d.results){const el=document.createElement('section');el.className='compare-item interactive-translation';el.tabIndex=0;el.setAttribute('role','button');el.dataset.searchCode=item.code;el.innerHTML=`<b>${esc(item.code)}</b><small>${esc(item.name)}</small><p>${item.error?esc(item.error):`${item.count} ocorrências · ${item.verses.length} versículos`}</p>`;list.appendChild(el);if(!item.error){const show=()=>showFloatingMenu(el,'Abrir tradução',()=>navigate('search-verses',{searchCode:item.code,searchSource:kind}));el.onclick=show;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}};}}
+ if(!d.results.length)list.innerHTML='<p class="hint">Aguardando resultados…</p>';
+}
+async function runSearch(kind,raw){
+ const query=raw.trim();if(!query)return;
+ if(!/^[\p{L}\p{N}]+$/u.test(query)){notify('Digite apenas uma palavra, sem espaços ou pontuação.');return;}
+ const d=searchState[kind],codes=kind==='global'?translations.filter(t=>isSelected(t[0])):translations.filter(t=>t[0]===state.translation);
+ const run=++searchRun;
+ Object.assign(d,{query,results:[],done:0,total:codes.length,working:true});drawSearchResults(kind);
+ for(const t of codes){if(run!==searchRun)return;
+  let result={code:t[0],name:t[1],count:0,verses:[]};
+  try{const bible=await loadTranslation(t[0]);
+   for(let b=0;b<bible.length;b++){for(let c=0;c<bible[b].chapters.length;c++){
+    const verses=bible[b].chapters[c];for(let v=0;v<verses.length;v++){
+     const count=occurrences(verses[v],query).length;if(count){result.count+=count;result.verses.push({book:b,chapter:c,verse:v,text:verses[v]});}
+    }
+   }if(b%6===0)await new Promise(resolve=>setTimeout(resolve,0));}
+  }catch(e){result.error='Tradução indisponível: '+e.message;}
+  if(run!==searchRun)return;d.results.push(result);d.done++;drawSearchResults(kind);
+ }
+ d.working=false;drawSearchResults(kind);
+}
 function catalogPage(){
  heading('Traduções cadastradas','Selecione para comparar');
  const selectedCount=translations.filter(t=>isSelected(t[0])).length;
@@ -233,10 +296,10 @@ function closeFloatingMenu(){
  if(floatingMenu){floatingMenu.remove();floatingMenu=null;}
 }
 function showFloatingMenu(anchor,label,action){
- if(floatingMenu?.dataset.anchor===anchor.dataset.readerVerse+'|'+anchor.dataset.openTranslation){closeFloatingMenu();return;}
+ if(floatingMenu?.dataset.anchor===[anchor.dataset.readerVerse,anchor.dataset.openTranslation,anchor.dataset.searchVerse,anchor.dataset.searchCode].join('|')){closeFloatingMenu();return;}
  closeFloatingMenu();
  const menu=document.createElement('div');menu.className='floating-menu';
- menu.dataset.anchor=anchor.dataset.readerVerse+'|'+anchor.dataset.openTranslation;
+ menu.dataset.anchor=[anchor.dataset.readerVerse,anchor.dataset.openTranslation,anchor.dataset.searchVerse,anchor.dataset.searchCode].join('|');
  const button=document.createElement('button');button.type='button';button.textContent=label;
  button.onclick=event=>{event.stopPropagation();closeFloatingMenu();action();};
  menu.appendChild(button);document.body.appendChild(menu);floatingMenu=menu;
@@ -247,7 +310,7 @@ function showFloatingMenu(anchor,label,action){
  menu.style.left=left+'px';menu.style.top=top+'px';
 }
 document.addEventListener('pointerdown',event=>{
- if(floatingMenu&&!floatingMenu.contains(event.target)&&!event.target.closest('[data-reader-verse],[data-open-translation]'))closeFloatingMenu();
+ if(floatingMenu&&!floatingMenu.contains(event.target)&&!event.target.closest('[data-reader-verse],[data-open-translation],[data-search-verse],[data-search-code]'))closeFloatingMenu();
 });
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeFloatingMenu();});
 window.addEventListener('scroll',closeFloatingMenu,{passive:true});
@@ -291,7 +354,7 @@ async function loadTranslation(code){
 $('#back').onclick=back;
 $('#catalog-shortcut').onclick=()=>navigate('catalog');
 document.querySelectorAll('[data-nav]').forEach(el=>el.onclick=()=>{
- const p=el.dataset.nav;if(p==='home')navigate('home');else if(p==='catalog')navigate('catalog');else start(p==='compare'?'compare':'read');
+ const p=el.dataset.nav;if(p==='home')navigate('home');else if(p==='catalog')navigate('catalog');else if(p==='search')navigate('search');else start(p==='compare'?'compare':'read');
 });
 (async()=>{
  main.innerHTML='<div class="initial-loading" role="status" aria-live="polite"><div class="loading-spinner" aria-hidden="true"></div><p>Carregando Bíblia…</p></div>';
