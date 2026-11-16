@@ -13,3 +13,12 @@
 @media(prefers-reduced-motion:reduce){.loading-spinner{animation-duration:2s}.progress-fill{transition:none}}
 
 .search-form{display:flex;gap:8px;align-items:stretch}.search-form .search{min-width:0;flex:1;margin:0}.search-form .primary{flex-shrink:0}mark{background:#b89bd0;color:#17101d;border-radius:3px;padding:0 2px;font-weight:700}.target-verse{background:#34253f!important;outline:2px solid #b89bd0;scroll-margin-top:115px}.compare-item[role="button"]:focus-visible{outline:2px solid #b89bd0}@media(max-width:390px){.search-form{flex-direction:column}nav button{font-size:11px}}
+/* Biblioteca offline personalizada */
+.add-translation{display:block;margin:20px auto;padding:10px 16px;background:transparent;border:1px solid var(--line,#bbb);border-radius:12px;color:inherit;cursor:pointer}
+.catalog-tabs{display:flex;gap:8px;margin:12px 0 18px}
+.catalog-tabs button{flex:1;padding:12px 8px;border:1px solid #8885;border-radius:10px;background:transparent;color:inherit;cursor:pointer}
+.catalog-tabs button.active{font-weight:700;background:#8882;border-color:#8888}
+.reset-section{margin-top:32px;padding:12px;border-top:1px solid #8885}
+.reset-section summary{cursor:pointer;font-size:.86rem;opacity:.8}
+.reset-section .selection-action{margin-top:12px}
+.reset-button{color:#b44!important}

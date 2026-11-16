@@ -24,43 +24,61 @@ const library = Object.create(null);
 const availability = Object.create(null);
 const inFlight = Object.create(null);
 // Offline: todos os códigos do catálogo são baixados e armazenados após a primeira abertura online.
-let offlineBusy=false, offlineDone=0, offlineFailed=[];
-const offlineKey='biblia-comparada-offline-24-v1';
-function offlineUI(){
- const el=document.querySelector('#offline-status');
- if(el)el.textContent=offlineBusy?`Preparando uso offline: ${offlineDone}/${translations.length} traduções…`:
- offlineFailed.length?`${offlineDone}/${translations.length} disponíveis offline. ${offlineFailed.length} arquivo(s) não baixado(s). Toque para tentar novamente.`:
- `Uso offline: ${offlineDone}/${translations.length} traduções armazenadas. Toque para verificar novamente.`;
- const button=document.querySelector('#offline-download');if(button)button.disabled=offlineBusy;
-}
-async function offlineCount(){
+const BIBLE_CACHE='biblia-comparada-bibles-v25';
+const storedCodes=new Set(['ARC']);
+const downloadBusy=new Set();
+const catholicCodes=new Set(['AVM','MATOS','PASTORAL']);
+const cross=code=>catholicCodes.has(code)?' ✝':'';
+async function syncStored(){
  if(!('caches' in window))return;
- let n=0;for(const [code] of translations){if(await caches.match(`./data/${code}.json`,{ignoreSearch:true}))n++;}
- offlineDone=n;offlineUI();
+ for(const [code] of translations){
+  if(await caches.match(`./data/${code}.json`,{ignoreSearch:true}))storedCodes.add(code);
+  else if(code!=='ARC')storedCodes.delete(code);
+ }
 }
-async function downloadAllOffline(){
- if(offlineBusy||!('caches' in window)||!('serviceWorker' in navigator))return;
- if(!navigator.onLine){await offlineCount();return;}
- offlineBusy=true;offlineFailed=[];offlineUI();
+async function persistBible(code,response){
+ if(!('caches' in window))throw Error('Armazenamento offline indisponível neste navegador.');
+ const cache=await caches.open(BIBLE_CACHE);
+ await cache.put(`./data/${code}.json`,response);
+ storedCodes.add(code);
+}
+async function downloadBible(code){
+ if(downloadBusy.has(code))return;
+ downloadBusy.add(code);catalogPage();
+ // Solicita persistência durante uma ação explícita do usuário, quando suportada.
+ navigator.storage?.persist?.().catch(()=>{});
  try{
-  // Espere o controlador do Service Worker: os JSONs ficam no mesmo cache que ele usa.
-  await navigator.serviceWorker.ready;
-  if(!navigator.serviceWorker.controller){offlineFailed=['Aguardando ativação do aplicativo'];return;}
-  const cache=await caches.open('biblia-comparada-v24-pesquisa-24');
-  const codes=translations.map(t=>t[0]);let cursor=0;
-  async function worker(){while(cursor<codes.length){
-   const code=codes[cursor++],url=`./data/${code}.json`;
-   try{
-    const existing=await cache.match(url);
-    if(!existing){const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`HTTP ${response.status}`);await cache.put(url,response.clone());}
-   }catch(error){offlineFailed.push(code);}
-   await offlineCount();
-  }}
-  await Promise.all([worker(),worker()]);
-  try{localStorage.setItem(offlineKey,JSON.stringify({date:Date.now(),failed:offlineFailed}));}catch(e){}
- }finally{offlineBusy=false;await offlineCount();}
+  const response=await fetch(`./data/${code}.json`,{cache:'no-store'});
+  if(!response.ok)throw Error(`Arquivo indisponível (HTTP ${response.status}).`);
+  const copy=response.clone(),data=await response.json();
+  validate(data,code);
+  await persistBible(code,copy);
+  library[code]=data;availability[code]=true;
+  notify(`${code} baixada para uso offline.`);
+ }catch(error){notify(`${code}: ${error.message}`);}
+ finally{downloadBusy.delete(code);if(state.page==='catalog')catalogPage();}
 }
-function startOfflineDownload(){downloadAllOffline().catch(error=>{offlineBusy=false;offlineFailed.push('Erro de armazenamento');offlineUI();console.warn(error);});}
+async function removeBible(code){
+ if(code==='ARC'){notify('A ARC é a tradução básica e não pode ser removida.');return;}
+ if(!confirm(`Remover ${code} do armazenamento offline?`))return;
+ for(const key of await caches.keys()){
+  const cache=await caches.open(key);
+  await cache.delete(`./data/${code}.json`,{ignoreSearch:true});
+ }
+ storedCodes.delete(code);delete library[code];setSelected(code,false);
+ catalogPage();
+}
+async function resetApp(){
+ if(!confirm('Apagar TODAS as traduções baixadas, preferências e dados offline deste aplicativo? Esta ação não pode ser desfeita.'))return;
+ if(!confirm('Confirmar restauração total? O aplicativo será reiniciado e precisará de internet para baixar a ARC novamente.'))return;
+ try{
+  const registrations=await navigator.serviceWorker?.getRegistrations()||[];
+  await Promise.all(registrations.filter(r=>r.scope.startsWith(new URL('./',location.href).href)).map(r=>r.unregister()));
+  if('caches' in window)await Promise.all((await caches.keys()).filter(k=>k.startsWith('biblia-comparada-')).map(k=>caches.delete(k)));
+  Object.keys(localStorage).filter(k=>k.startsWith('biblia-comparada-')).forEach(k=>localStorage.removeItem(k));
+  location.replace(location.pathname+'?reset='+Date.now()+'#home');
+ }catch(error){notify('Não foi possível limpar todos os dados: '+error.message);}
+}
 const comparisonPreferenceKey = 'biblia-comparada-comparison-selection-v1';
 // Ausência de preferência significa que todas as traduções estão selecionadas.
 function readComparisonPreferences(){
@@ -71,10 +89,10 @@ function readComparisonPreferences(){
  }catch(error){return {};}
 }
 const comparisonPreferences = readComparisonPreferences();
-function isSelected(code){return comparisonPreferences[code]!==false;}
+function isSelected(code){return storedCodes.has(code)&&(comparisonPreferences[code]===true||(code==='ARC'&&comparisonPreferences[code]!==false));}
 function setSelected(code,selected){
  if(!translations.some(t=>t[0]===code))return;
- if(selected)delete comparisonPreferences[code];else comparisonPreferences[code]=false;
+ comparisonPreferences[code]=!!selected;
  try{localStorage.setItem(comparisonPreferenceKey,JSON.stringify(comparisonPreferences));}
  catch(error){notify('Seleção alterada, mas não foi possível salvá-la neste navegador.');}
 }
@@ -86,7 +104,7 @@ let floatingMenu = null;
 const esc = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[ch]));
 function notify(message) { const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),3500); }
 function snapshot(){return {...state};}
-function navigate(target,changes={}) { closeFloatingMenu(); Object.assign(state,changes,{page:target}); history.pushState(snapshot(),'','#'+target); render(); window.scrollTo(0,0); }
+function navigate(target,changes={}) { closeFloatingMenu(); Object.assign(state,changes,{page:target}); if(['home','translations','catalog','search'].includes(target))localStorage.setItem('biblia-comparada-last-tab',target); history.pushState(snapshot(),'','#'+target); render(); window.scrollTo(0,0); }
 function back(){if(history.state && history.state.page!=='home') history.back(); else navigate('home');}
 window.addEventListener('popstate', event=>{ Object.assign(state,event.state && event.state.page?event.state:{page:'home',mode:'read',translation:'ARC',book:0,chapter:0,verse:0});render();window.scrollTo(0,0); });
 function heading(title,subtitle='Português (Brasil)'){$('#title').textContent=title;$('#subtitle').textContent=subtitle;$('#back').classList.toggle('hidden',state.page==='home');}
@@ -104,24 +122,23 @@ function render(){
 }
 function home(){
  heading('Bíblia Comparada');
- main.innerHTML=`<section class="home"><div class="home-logo">▱</div><h1>Bíblia Comparada</h1><p>Uma referência. Diversas traduções.</p></section>
- <div class="actions"><button class="action" id="read"><span class="symbol">▱</span><span><strong>Tradução específica</strong><small>Leia a Bíblia em uma tradução</small></span></button>
- <button class="action" id="compare"><span class="symbol">⇄</span><span><strong>Comparar traduções</strong><small>Compare o mesmo versículo nas versões disponíveis</small></span></button></div>
- <button class="link" id="see-catalog">Visualizar todas as traduções cadastradas</button>
- <button class="link" id="offline-download" type="button">Baixar/verificar todas as traduções para uso offline</button><p class="hint" id="offline-status" role="status" aria-live="polite">Verificando armazenamento offline…</p>
-`;
- $('#read').onclick=()=>start('read');$('#compare').onclick=()=>start('compare');$('#see-catalog').onclick=()=>navigate('catalog');$('#offline-download').onclick=startOfflineDownload;offlineCount();
+ main.innerHTML=`<section class="home"><div class="home-logo">▱</div><h1>Bíblia Comparada</h1><p>Leia, compare e pesquise as Escrituras.</p></section>
+ <div class="actions"><button class="action" id="read"><span class="symbol">▱</span><span><strong>Abrir Bíblia</strong></span></button>
+ <button class="action" id="compare"><span class="symbol">⇄</span><span><strong>Comparar</strong></span></button>
+ <button class="action" id="search-home"><span class="symbol">⌕</span><span><strong>Pesquisar</strong></span></button></div>`;
+ $('#read').onclick=()=>start('read');$('#compare').onclick=()=>start('compare');$('#search-home').onclick=()=>navigate('search');
 }
-function status(code){return library[code]?'Disponível':availability[code]===true?'Disponível':availability[code]===false?'Sem arquivo':'Verificando…';}
+function status(code){return storedCodes.has(code)?'Baixada':'Não baixada';}
 function translationList(){
- heading('Tradução específica','Escolha a tradução');
- main.innerHTML='<h2>Traduções cadastradas</h2><p class="hint">Clique em uma tradução para ler o texto na íntegra.</p>'+translations.map(t=>`<button class="list-row" data-translation="${t[0]}"><span><b>${t[0]} — ${esc(t[1])}</b><small>${t[2]} · ${esc(t[3])}</small></span><span class="pill" data-status="${t[0]}">${status(t[0])}</span></button>`).join('');
+ heading('Bíblia','Traduções disponíveis offline');
+ const available=translations.filter(t=>storedCodes.has(t[0]));
+ main.innerHTML='<h2>Escolha uma tradução</h2>'+available.map(t=>`<button class="list-row" data-translation="${t[0]}"><span><b>${t[0]}${cross(t[0])} — ${esc(t[1])}</b></span><span>›</span></button>`).join('')+
+ '<button class="add-translation" id="add-translation" type="button">＋ Adicionar tradução</button>';
+ $('#add-translation').onclick=()=>navigate('catalog');
  main.querySelectorAll('[data-translation]').forEach(el=>el.onclick=async()=>{
-  const code=el.dataset.translation;
-  if(availability[code]===false){notify(`Arquivo data/${code}.json não encontrado.`);return;}
-  el.disabled=true; const pill=el.querySelector('.pill');pill.textContent='Carregando…';
+  const code=el.dataset.translation;el.disabled=true;
   try{await loadTranslation(code);navigate('books',{translation:code,book:0,chapter:0,verse:0});}
-  catch(error){notify(`${code}: ${error.message}`);el.disabled=false;pill.textContent=status(code);}
+  catch(error){notify(`${code}: ${error.message}`);el.disabled=false;}
  });
 }
 function booksPage(){
@@ -278,20 +295,28 @@ async function runSearch(kind,raw){
  }
  d.working=false;drawSearchResults(kind);
 }
+let catalogTab='downloaded';
 function catalogPage(){
- heading('Traduções cadastradas','Selecione para comparar');
- const selectedCount=translations.filter(t=>isSelected(t[0])).length;
- main.innerHTML=`<h2>Catálogo de traduções</h2>
- <p class="hint">Marque as traduções que deseja ver na comparação. Todas começam selecionadas. As escolhas ficam salvas apenas neste navegador e não afetam a leitura individual.</p>
- <div class="catalog-toolbar"><span id="selection-count" aria-live="polite">${selectedCount} de ${translations.length} selecionadas</span><button class="selection-action" id="select-all" type="button">Marcar todas</button><button class="selection-action" id="select-none" type="button">Desmarcar todas</button></div>
- ${translations.map(t=>`<label class="list-row catalog-row"><span class="catalog-detail"><b>${t[0]} — ${esc(t[1])}</b><small>${t[2]} · ${esc(t[3])}</small><span class="pill catalog-status" data-status="${t[0]}">${status(t[0])}</span></span><span class="catalog-choice"><input type="checkbox" data-compare-code="${t[0]}" ${isSelected(t[0])?'checked':''} aria-label="Incluir ${esc(t[1])} na comparação"><span>Comparar</span></span></label>`).join('')}
-`;
- const refresh=()=>{$('#selection-count').textContent=`${translations.filter(t=>isSelected(t[0])).length} de ${translations.length} selecionadas`;};
- main.querySelectorAll('[data-compare-code]').forEach(el=>el.onchange=()=>{setSelected(el.dataset.compareCode,el.checked);refresh();});
- $('#select-all').onclick=()=>{translations.forEach(t=>setSelected(t[0],true));main.querySelectorAll('[data-compare-code]').forEach(el=>el.checked=true);refresh();};
- $('#select-none').onclick=()=>{translations.forEach(t=>setSelected(t[0],false));main.querySelectorAll('[data-compare-code]').forEach(el=>el.checked=false);refresh();};
+ heading('Traduções','Gerencie sua biblioteca offline');
+ const available=translations.filter(t=>storedCodes.has(t[0]));
+ const missing=translations.filter(t=>!storedCodes.has(t[0]));
+ main.innerHTML=`<div class="catalog-tabs"><button id="tab-downloaded" class="${catalogTab==='downloaded'?'active':''}">Baixadas (${available.length})</button><button id="tab-available" class="${catalogTab==='available'?'active':''}">Disponíveis (${missing.length})</button></div>
+ <p class="hint">${catalogTab==='downloaded'?'Marque as traduções que deseja comparar e pesquisar.':'Baixe apenas as traduções que deseja utilizar. Elas ficarão disponíveis offline.'}</p>
+ ${(catalogTab==='downloaded'?available:missing).map(t=>`<div class="list-row catalog-row"><span class="catalog-detail"><b>${t[0]}${cross(t[0])} — ${esc(t[1])}</b><small>${esc(t[3])}</small></span><span class="catalog-choice">${catalogTab==='downloaded'?`<label><input type="checkbox" data-compare-code="${t[0]}" ${isSelected(t[0])?'checked':''}> Comparar</label> ${t[0]==='ARC'?'':`<button class="selection-action" data-remove="${t[0]}" aria-label="Remover ${t[0]}">⋯</button>`}`:`<button class="selection-action" data-download="${t[0]}" ${downloadBusy.has(t[0])?'disabled':''}>${downloadBusy.has(t[0])?'Baixando…':'↓ Baixar'}</button>`}</span></div>`).join('')}
+ <details class="reset-section"><summary>Armazenamento e manutenção</summary><p class="hint">As traduções baixadas ficam armazenadas para uso offline. O navegador pode removê-las se faltar espaço.</p><button id="persist-cache" class="selection-action">Proteger armazenamento offline</button><p class="hint" id="persist-status"></p><button id="reset-app" class="selection-action reset-button">Restaurar aplicativo e limpar todos os dados</button></details>`;
+ $('#tab-downloaded').onclick=()=>{catalogTab='downloaded';catalogPage();};
+ $('#tab-available').onclick=()=>{catalogTab='available';catalogPage();};
+ main.querySelectorAll('[data-download]').forEach(el=>el.onclick=()=>downloadBible(el.dataset.download));
+ main.querySelectorAll('[data-remove]').forEach(el=>el.onclick=()=>removeBible(el.dataset.remove));
+ main.querySelectorAll('[data-compare-code]').forEach(el=>el.onchange=()=>setSelected(el.dataset.compareCode,el.checked));
+ $('#persist-cache').onclick=async()=>{
+  const label=$('#persist-status');
+  if(!navigator.storage?.persist){label.textContent='Este navegador não oferece armazenamento persistente.';return;}
+  try{label.textContent=(await navigator.storage.persist())?'Armazenamento persistente autorizado.':'O navegador não autorizou armazenamento persistente.';}
+  catch(e){label.textContent='Não foi possível solicitar a proteção.';}
+ };
+ $('#reset-app').onclick=resetApp;
 }
-
 function closeFloatingMenu(){
  if(floatingMenu){floatingMenu.remove();floatingMenu=null;}
 }
@@ -328,19 +353,9 @@ function validate(data,code){
  }
  return data;
 }
-async function probe(code){
- if(code==='ARC'||library[code]){availability[code]=true;return;}
- try{
-  const url=`./data/${encodeURIComponent(code)}.json`;
-  // Uma tradução já armazenada continua disponível sem conexão.
-  const cached=('caches' in window)?await caches.match(url):null;
-  if(cached){availability[code]=true;}
-  else {const response=await fetch(url,{method:'HEAD',cache:'no-store'});availability[code]=response.ok;}
- }
- catch(error){availability[code]=false;}
- updateStatuses();
-}
+async function probe(code){availability[code]=storedCodes.has(code);updateStatuses();}
 async function loadTranslation(code){
+ if(!storedCodes.has(code))throw Error('Baixe esta tradução na aba Traduções.');
  if(library[code])return library[code];
  if(inFlight[code])return inFlight[code];
  inFlight[code]=(async()=>{
@@ -364,10 +379,9 @@ document.querySelectorAll('[data-nav]').forEach(el=>el.onclick=()=>{
   const arc=await response.json();
   if(!Array.isArray(arc)||arc.length!==66)throw Error('O arquivo ARC.json não contém os 66 livros esperados.');
   books=arc;validate(arc,'ARC');library.ARC=arc;availability.ARC=true;
-  history.replaceState(snapshot(),'','#home');render();
-  await Promise.all(translations.filter(t=>t[0]!=='ARC').map(t=>probe(t[0])));
-  // Prepara as 24 traduções sem bloquear a leitura. Ausentes podem ser tentadas novamente pelo botão.
-  if(navigator.onLine)navigator.serviceWorker?.ready.then(()=>{if(navigator.serviceWorker.controller)startOfflineDownload();}).catch(console.warn);
+  const last=localStorage.getItem('biblia-comparada-last-tab');if(['home','translations','catalog','search'].includes(last))state.page=last;history.replaceState(snapshot(),'','#'+state.page);render();
+  await syncStored();
+  render();
  }catch(error){main.innerHTML=`<h2>Erro ao carregar a Bíblia</h2><p class="hint">${esc(error.message)}</p><p>Confira se o arquivo <code>data/ARC.json</code> está no GitHub Pages e se o site foi publicado corretamente.</p>`;}
 })();
-if('serviceWorker'in navigator && location.protocol!=='file:')window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(async()=>{await navigator.serviceWorker.ready;if(!navigator.serviceWorker.controller){navigator.serviceWorker.addEventListener('controllerchange',()=>{if(navigator.onLine)startOfflineDownload();},{once:true});}else if(navigator.onLine)startOfflineDownload();}).catch(console.warn));
+if('serviceWorker'in navigator && location.protocol!=='file:')window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(console.warn));
