@@ -23,6 +23,44 @@ const state = {page:'home', mode:'read', translation:'ARC', book:0, chapter:0, v
 const library = Object.create(null);
 const availability = Object.create(null);
 const inFlight = Object.create(null);
+// Offline: todos os códigos do catálogo são baixados e armazenados após a primeira abertura online.
+let offlineBusy=false, offlineDone=0, offlineFailed=[];
+const offlineKey='biblia-comparada-offline-24-v1';
+function offlineUI(){
+ const el=document.querySelector('#offline-status');
+ if(el)el.textContent=offlineBusy?`Preparando uso offline: ${offlineDone}/${translations.length} traduções…`:
+ offlineFailed.length?`${offlineDone}/${translations.length} disponíveis offline. ${offlineFailed.length} arquivo(s) não baixado(s). Toque para tentar novamente.`:
+ `Uso offline: ${offlineDone}/${translations.length} traduções armazenadas. Toque para verificar novamente.`;
+ const button=document.querySelector('#offline-download');if(button)button.disabled=offlineBusy;
+}
+async function offlineCount(){
+ if(!('caches' in window))return;
+ let n=0;for(const [code] of translations){if(await caches.match(`./data/${code}.json`,{ignoreSearch:true}))n++;}
+ offlineDone=n;offlineUI();
+}
+async function downloadAllOffline(){
+ if(offlineBusy||!('caches' in window)||!('serviceWorker' in navigator))return;
+ if(!navigator.onLine){await offlineCount();return;}
+ offlineBusy=true;offlineFailed=[];offlineUI();
+ try{
+  // Espere o controlador do Service Worker: os JSONs ficam no mesmo cache que ele usa.
+  await navigator.serviceWorker.ready;
+  if(!navigator.serviceWorker.controller){offlineFailed=['Aguardando ativação do aplicativo'];return;}
+  const cache=await caches.open('biblia-comparada-v23-offline-24');
+  const codes=translations.map(t=>t[0]);let cursor=0;
+  async function worker(){while(cursor<codes.length){
+   const code=codes[cursor++],url=`./data/${code}.json`;
+   try{
+    const existing=await cache.match(url);
+    if(!existing){const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`HTTP ${response.status}`);await cache.put(url,response.clone());}
+   }catch(error){offlineFailed.push(code);}
+   await offlineCount();
+  }}
+  await Promise.all([worker(),worker()]);
+  try{localStorage.setItem(offlineKey,JSON.stringify({date:Date.now(),failed:offlineFailed}));}catch(e){}
+ }finally{offlineBusy=false;await offlineCount();}
+}
+function startOfflineDownload(){downloadAllOffline().catch(error=>{offlineBusy=false;offlineFailed.push('Erro de armazenamento');offlineUI();console.warn(error);});}
 const comparisonPreferenceKey = 'biblia-comparada-comparison-selection-v1';
 // Ausência de preferência significa que todas as traduções estão selecionadas.
 function readComparisonPreferences(){
@@ -67,8 +105,9 @@ function home(){
  <div class="actions"><button class="action" id="read"><span class="symbol">▱</span><span><strong>Tradução específica</strong><small>Leia a Bíblia em uma tradução</small></span></button>
  <button class="action" id="compare"><span class="symbol">⇄</span><span><strong>Comparar traduções</strong><small>Compare o mesmo versículo nas versões disponíveis</small></span></button></div>
  <button class="link" id="see-catalog">Visualizar todas as traduções cadastradas</button>
+ <button class="link" id="offline-download" type="button">Baixar/verificar todas as traduções para uso offline</button><p class="hint" id="offline-status" role="status" aria-live="polite">Verificando armazenamento offline…</p>
 `;
- $('#read').onclick=()=>start('read');$('#compare').onclick=()=>start('compare');$('#see-catalog').onclick=()=>navigate('catalog');
+ $('#read').onclick=()=>start('read');$('#compare').onclick=()=>start('compare');$('#see-catalog').onclick=()=>navigate('catalog');$('#offline-download').onclick=startOfflineDownload;offlineCount();
 }
 function status(code){return library[code]?'Disponível':availability[code]===true?'Disponível':availability[code]===false?'Sem arquivo':'Verificando…';}
 function translationList(){
@@ -228,7 +267,13 @@ function validate(data,code){
 }
 async function probe(code){
  if(code==='ARC'||library[code]){availability[code]=true;return;}
- try{const response=await fetch(`./data/${encodeURIComponent(code)}.json`,{method:'HEAD',cache:'no-store'});availability[code]=response.ok;}
+ try{
+  const url=`./data/${encodeURIComponent(code)}.json`;
+  // Uma tradução já armazenada continua disponível sem conexão.
+  const cached=('caches' in window)?await caches.match(url):null;
+  if(cached){availability[code]=true;}
+  else {const response=await fetch(url,{method:'HEAD',cache:'no-store'});availability[code]=response.ok;}
+ }
  catch(error){availability[code]=false;}
  updateStatuses();
 }
@@ -258,6 +303,8 @@ document.querySelectorAll('[data-nav]').forEach(el=>el.onclick=()=>{
   books=arc;validate(arc,'ARC');library.ARC=arc;availability.ARC=true;
   history.replaceState(snapshot(),'','#home');render();
   await Promise.all(translations.filter(t=>t[0]!=='ARC').map(t=>probe(t[0])));
+  // Prepara as 24 traduções sem bloquear a leitura. Ausentes podem ser tentadas novamente pelo botão.
+  if(navigator.onLine)navigator.serviceWorker?.ready.then(()=>{if(navigator.serviceWorker.controller)startOfflineDownload();}).catch(console.warn);
  }catch(error){main.innerHTML=`<h2>Erro ao carregar a Bíblia</h2><p class="hint">${esc(error.message)}</p><p>Confira se o arquivo <code>data/ARC.json</code> está no GitHub Pages e se o site foi publicado corretamente.</p>`;}
 })();
-if('serviceWorker'in navigator && location.protocol!=='file:')window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(console.warn));
+if('serviceWorker'in navigator && location.protocol!=='file:')window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(async()=>{await navigator.serviceWorker.ready;if(!navigator.serviceWorker.controller){navigator.serviceWorker.addEventListener('controllerchange',()=>{if(navigator.onLine)startOfflineDownload();},{once:true});}else if(navigator.onLine)startOfflineDownload();}).catch(console.warn));
