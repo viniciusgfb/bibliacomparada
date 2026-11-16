@@ -1,5 +1,5 @@
 // Bíblia Comparada — interface e textos em caches separados.
-const SHELL_CACHE='biblia-comparada-shell-v26';
+const SHELL_CACHE='biblia-comparada-shell-v27';
 const BIBLE_CACHE='biblia-comparada-bibles-v25';
 const SHELL=['./','./index.html','./style.css','./app.js','./manifest.webmanifest','./icons/icon.svg','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(SHELL_CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));

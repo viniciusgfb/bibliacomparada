@@ -23,15 +23,16 @@ const state = {page:'home', mode:'read', translation:'ARC', book:0, chapter:0, v
 const library = Object.create(null);
 const availability = Object.create(null);
 const inFlight = Object.create(null);
-// Offline: todos os códigos do catálogo são baixados e armazenados após a primeira abertura online.
+// Download individual e armazenamento offline das traduções.
 const BIBLE_CACHE='biblia-comparada-bibles-v25';
 const storedCodes=new Set(['ARC']);
 const downloadBusy=new Set();
 const catholicCodes=new Set(['AVM','MATOS','PASTORAL']);
 const cross=code=>catholicCodes.has(code)?' ✝':'';
+const sortedTranslations=[...translations].sort((a,b)=>a[1].localeCompare(b[1],'pt-BR',{sensitivity:'base'})||a[0].localeCompare(b[0]));
 async function syncStored(){
  if(!('caches' in window))return;
- for(const [code] of translations){
+ for(const [code] of sortedTranslations){
   if(await caches.match(`./data/${code}.json`,{ignoreSearch:true}))storedCodes.add(code);
   else if(code!=='ARC')storedCodes.delete(code);
  }
@@ -54,6 +55,7 @@ async function downloadBible(code){
   validate(data,code);
   await persistBible(code,copy);
   library[code]=data;availability[code]=true;
+  setSelected(code,true);
   notify(`${code} baixada para uso offline.`);
  }catch(error){notify(`${code}: ${error.message}`);}
  finally{downloadBusy.delete(code);if(state.page==='catalog')catalogPage();}
@@ -80,16 +82,16 @@ async function resetApp(){
  }catch(error){notify('Não foi possível limpar todos os dados: '+error.message);}
 }
 const comparisonPreferenceKey = 'biblia-comparada-comparison-selection-v1';
-// Ausência de preferência significa que todas as traduções estão selecionadas.
+// Ausência de preferência significa 'Comparar' marcado. Valores explícitos são preservados entre sessões.
 function readComparisonPreferences(){
  try {
   const saved=JSON.parse(localStorage.getItem(comparisonPreferenceKey)||'{}');
   if(!saved||typeof saved!=='object'||Array.isArray(saved))return {};
-  return Object.fromEntries(translations.map(t=>t[0]).filter(code=>saved[code]===false).map(code=>[code,false]));
+  return Object.fromEntries(translations.map(t=>t[0]).filter(code=>typeof saved[code]==='boolean').map(code=>[code,saved[code]]));
  }catch(error){return {};}
 }
 const comparisonPreferences = readComparisonPreferences();
-function isSelected(code){return storedCodes.has(code)&&(comparisonPreferences[code]===true||(code==='ARC'&&comparisonPreferences[code]!==false));}
+function isSelected(code){return storedCodes.has(code)&&comparisonPreferences[code]!==false;}
 function setSelected(code,selected){
  if(!translations.some(t=>t[0]===code))return;
  comparisonPreferences[code]=!!selected;
@@ -131,10 +133,10 @@ function home(){
 function status(code){return storedCodes.has(code)?'Baixada':'Não baixada';}
 function translationList(){
  heading('Bíblia','Traduções disponíveis offline');
- const available=translations.filter(t=>storedCodes.has(t[0]));
+ const available=sortedTranslations.filter(t=>storedCodes.has(t[0]));
  main.innerHTML='<h2>Escolha uma tradução</h2>'+available.map(t=>`<button class="list-row" data-translation="${t[0]}"><span><b>${t[0]}${cross(t[0])} — ${esc(t[1])}</b></span><span>›</span></button>`).join('')+
  '<button class="add-translation" id="add-translation" type="button">＋ Adicionar tradução</button>';
- $('#add-translation').onclick=()=>navigate('catalog');
+ $('#add-translation').onclick=()=>{catalogTab='available';navigate('catalog');};
  main.querySelectorAll('[data-translation]').forEach(el=>el.onclick=async()=>{
   const code=el.dataset.translation;el.disabled=true;
   try{await loadTranslation(code);navigate('books',{translation:code,book:0,chapter:0,verse:0});}
@@ -194,7 +196,7 @@ function versesPage(){
 }
 function comparisonPage(){
  const b=book(),v=state.verse,c=state.chapter,run=++comparisonRun;
- const selected=translations.filter(t=>isSelected(t[0]));
+ const selected=sortedTranslations.filter(t=>isSelected(t[0]));
  // Only translations the visitor selected contribute to progress.
  const total=selected.length;
  heading(`${b.name} ${c+1}:${v+1}`,'Comparação de traduções');
@@ -203,9 +205,10 @@ function comparisonPage(){
   <div class="progress-track" role="progressbar" aria-label="Traduções carregadas" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="comparison-progress"><div class="progress-fill" id="comparison-progress-fill"></div></div>
   <span class="progress-label" id="comparison-progress-label" aria-live="polite">Carregando traduções…</span>
  </div>
- <div id="comparison-results"></div>`+
+ <div id="comparison-results"></div><button class="add-translation" id="add-comparison" type="button">＋ Adicionar tradução</button>`+
  pager('VERSÍCULO',`${v+1} DE ${b.chapters[c].length}`,state.book>0||c>0||v>0,state.book<65||c<b.chapters.length-1||v<b.chapters[c].length-1);
  $('#prev').onclick=()=>moveVerse(-1);$('#next').onclick=()=>moveVerse(1);
+ $('#add-comparison').onclick=()=>{catalogTab='available';navigate('catalog');};
  const draw=()=>{
   if(run!==comparisonRun||state.page!=='comparison')return;
   const loaded=selected.filter(t=>library[t[0]]);
@@ -279,7 +282,7 @@ function drawSearchResults(kind){
 async function runSearch(kind,raw){
  const query=raw.trim();if(!query)return;
  if(!/^[\p{L}\p{N}]+$/u.test(query)){notify('Digite apenas uma palavra, sem espaços ou pontuação.');return;}
- const d=searchState[kind],codes=kind==='global'?translations.filter(t=>isSelected(t[0])):translations.filter(t=>t[0]===state.translation);
+ const d=searchState[kind],codes=kind==='global'?sortedTranslations.filter(t=>isSelected(t[0])):sortedTranslations.filter(t=>t[0]===state.translation);
  const run=++searchRun;
  Object.assign(d,{query,results:[],done:0,total:codes.length,working:true});drawSearchResults(kind);
  for(const t of codes){if(run!==searchRun)return;
@@ -291,15 +294,15 @@ async function runSearch(kind,raw){
     }
    }if(b%6===0)await new Promise(resolve=>setTimeout(resolve,0));}
   }catch(e){result.error='Tradução indisponível: '+e.message;}
-  if(run!==searchRun)return;d.results.push(result);d.done++;drawSearchResults(kind);
+  if(run!==searchRun)return;d.results.push(result);d.results.sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{sensitivity:'base'})||a.code.localeCompare(b.code));d.done++;drawSearchResults(kind);
  }
  d.working=false;drawSearchResults(kind);
 }
 let catalogTab='downloaded';
 function catalogPage(){
  heading('Traduções','Gerencie sua biblioteca offline');
- const available=translations.filter(t=>storedCodes.has(t[0]));
- const missing=translations.filter(t=>!storedCodes.has(t[0]));
+ const available=sortedTranslations.filter(t=>storedCodes.has(t[0]));
+ const missing=sortedTranslations.filter(t=>!storedCodes.has(t[0]));
  main.innerHTML=`<div class="catalog-tabs"><button id="tab-downloaded" class="${catalogTab==='downloaded'?'active':''}">Baixadas (${available.length})</button><button id="tab-available" class="${catalogTab==='available'?'active':''}">Disponíveis (${missing.length})</button></div>
  <p class="hint">${catalogTab==='downloaded'?'Marque as traduções que deseja comparar e pesquisar.':'Baixe apenas as traduções que deseja utilizar. Elas ficarão disponíveis offline.'}</p>
  ${(catalogTab==='downloaded'?available:missing).map(t=>`<div class="list-row catalog-row"><span class="catalog-detail"><b>${t[0]}${cross(t[0])} — ${esc(t[1])}</b><small>${esc(t[3])}</small></span><span class="catalog-choice">${catalogTab==='downloaded'?`<label><input type="checkbox" data-compare-code="${t[0]}" ${isSelected(t[0])?'checked':''}> Comparar</label> ${t[0]==='ARC'?'':`<button class="selection-action" data-remove="${t[0]}" aria-label="Remover ${t[0]}">⋯</button>`}`:`<button class="selection-action" data-download="${t[0]}" ${downloadBusy.has(t[0])?'disabled':''}>${downloadBusy.has(t[0])?'Baixando…':'↓ Baixar'}</button>`}</span></div>`).join('')}

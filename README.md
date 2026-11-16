@@ -1,19 +1,49 @@
 # Bíblia Comparada
 
-Aplicativo PWA para leitura, comparação e pesquisa de traduções bíblicas.
+Aplicativo PWA para leitura e comparação de traduções bíblicas, com a **ARC como referência**.
 
-## Instalação
-Publique os arquivos no GitHub Pages. O aplicativo instala somente a interface e a ARC inicialmente.
+## Como usar
 
-## Traduções
-Na aba **Traduções**, escolha **Disponíveis** e toque em **Baixar** para armazenar uma tradução offline. Em **Baixadas**, marque quais deseja usar em comparação e pesquisa. A aba Bíblia exibe apenas traduções armazenadas, com um botão + para adicionar outras.
+- **Tradução específica:** selecione uma versão, um livro e um capítulo para ler.
+- **Comparar traduções:** escolha livro, capítulo e versículo; as traduções disponíveis aparecem lado a lado.
+- **Catálogo:** marque ou desmarque as traduções que deseja incluir na comparação.
 
-A ARC é a tradução inicial. As demais são opcionais. A cruz (✝) identifica exclusivamente AVM, MATOS e PASTORAL.
+## Traduções incluídas
 
-## Armazenamento e manutenção
-Na aba Traduções, expanda **Armazenamento e manutenção** para solicitar armazenamento persistente (sujeito à autorização do navegador) ou **Restaurar aplicativo e limpar todos os dados**. A restauração exige duas confirmações, remove traduções armazenadas, caches e preferências, desregistra o service worker e reinicia o aplicativo. É necessária internet para baixar novamente a ARC.
+ARC, AA, RC69, BPT09, NVI2011, AVM (Ave-Maria), MATOS (Matos Soares) e PASTORAL (Bíblia Pastoral). O catálogo também contém outras traduções que podem ser adicionadas manualmente à pasta `data/`, usando o código correspondente como nome do arquivo JSON.
 
-O navegador ainda pode excluir dados em certas condições. Após publicar atualizações, feche e reabra o aplicativo para receber a versão mais recente.
+## Publicar no GitHub Pages
 
-## Estrutura
-`app.js`, `sw.js`, `style.css`, `index.html`, `manifest.webmanifest`, `icons/` e `data/CODIGO.json`. Os JSONs adicionais precisam existir no GitHub para poderem ser baixados. A comparação não faz mapeamento de versículos com divisões diferentes.
+Envie os arquivos e pastas do projeto para a raiz do repositório e ative **Settings → Pages**. Ao atualizar o aplicativo instalado, feche e abra novamente para carregar a versão mais recente.
+
+## Compatibilidade
+
+- Cada JSON deve conter 66 livros na ordem da ARC, com abreviações correspondentes e versículos não vazios.
+- As traduções AVM, MATOS e PASTORAL têm 3 capítulos em Malaquias, contra 4 na ARC; a leitura individual respeita a estrutura de cada tradução.
+- **Não há mapeamentos especiais:** a comparação é exibida somente quando o capítulo existe e tem a mesma quantidade de versículos da ARC. Mesmo assim, igualdade de contagem não garante equivalência textual perfeita.
+- Quando a divisão diverge, a comparação é sinalizada como indisponível; o texto permanece acessível na leitura individual.
+
+
+## Usar sem internet
+
+1. Publique `app.js` e `sw.js` atualizados no GitHub Pages.
+2. Abra o aplicativo com internet. O download das **24 traduções cadastradas** começará automaticamente em segundo plano.
+3. Na tela inicial, toque em **Baixar/verificar todas as traduções para uso offline** e acompanhe a contagem. Aguarde **24/24** antes de desconectar.
+4. Se algum arquivo estiver ausente no GitHub, publique-o em `data/CODIGO.json` e toque no botão novamente. O app não pode disponibilizar offline arquivos que ainda não existem no repositório.
+5. Desligue a internet e teste a leitura e a comparação.
+
+O armazenamento pode exigir cerca de 100 MB ou mais. A primeira preparação exige internet; o navegador pode remover o cache ao liberar espaço ou quando os dados do site forem apagados. O cache offline não modifica textos bíblicos nem a lógica de comparação.
+
+
+## Pesquisa por palavra
+
+A aba **Pesquisa** busca palavras inteiras em todas as traduções marcadas em **Traduções**, ignorando acentos e diferenças entre maiúsculas e minúsculas. Exibe ocorrências, quantidade de versículos e progresso. Toque na tradução, em **Abrir tradução**, no versículo e em **Abrir capítulo** para ler o capítulo com a palavra e o versículo destacados.
+
+Na aba **Bíblia**, depois de escolher uma tradução, a busca acima da lista de livros pesquisa palavras apenas naquela tradução. A lista de livros permanece disponível abaixo. Ambas as buscas funcionam offline quando os JSONs estão armazenados no dispositivo.
+
+## Atualização: comparação persistente e ordem alfabética
+- Toda tradução baixada fica automaticamente marcada para **Comparar**.
+- A seleção de comparação é salva no `localStorage` (`biblia-comparada-comparison-selection-v1`), inclusive as opções desmarcadas, e permanece após fechar o aplicativo. A restauração total do aplicativo limpa essas preferências.
+- A tela de comparação de versículos oferece **＋ Adicionar tradução**, que abre a seção **Disponíveis** da aba Traduções.
+- As traduções são exibidas em ordem alfabética pelo nome, em português, nas listas da Bíblia, do catálogo, da comparação e dos resultados da Pesquisa.
+- A cruz de identificação católica permanece somente em AVM, MATOS e PASTORAL.
