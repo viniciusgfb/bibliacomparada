@@ -1,23 +1,24 @@
 # Bíblia Comparada
 
-Aplicativo para leitura e comparação de traduções bíblicas, com **ARC** como referência.
-
-## Traduções disponíveis
-
-ARC, AA, RC69, BPT09 e NVI2011. As demais traduções do catálogo aparecem como indisponíveis até que seus arquivos sejam adicionados.
+Aplicativo PWA para leitura e comparação de traduções bíblicas, com a **ARC como referência**.
 
 ## Como usar
 
-Escolha **Ler** para selecionar uma tradução, livro e capítulo. Escolha **Comparar** para selecionar livro, capítulo e versículo; no **Catálogo**, marque quais traduções deseja comparar.
+- **Tradução específica:** selecione uma versão, um livro e um capítulo para ler.
+- **Comparar traduções:** escolha livro, capítulo e versículo; as traduções disponíveis aparecem lado a lado.
+- **Catálogo:** marque ou desmarque as traduções que deseja incluir na comparação.
 
-A comparação usa a mesma posição de versículo quando o capítulo tem a mesma quantidade de versículos da ARC. Quando as divisões diferem, a comparação é ocultada. **Não há mapeamentos de versículos.**
+## Traduções incluídas
 
-## Publicação
+ARC, AA, RC69, BPT09, NVI2011, AVM (Ave-Maria), MATOS (Matos Soares) e PASTORAL (Bíblia Pastoral). O catálogo também contém outras traduções que podem ser adicionadas manualmente à pasta `data/`, usando o código correspondente como nome do arquivo JSON.
 
-Envie todos os arquivos e pastas para a raiz de um repositório GitHub Pages e ative Pages nas configurações do repositório.
+## Publicar no GitHub Pages
 
-## Arquivos
+Envie os arquivos e pastas do projeto para a raiz do repositório e ative **Settings → Pages**. Ao atualizar o aplicativo instalado, feche e abra novamente para carregar a versão mais recente.
 
-- `data/ARC.json`: tradução de referência.
-- `data/AA.json`, `data/RC69.json`, `data/BPT09.json`, `data/NVI2011.json`: traduções incluídas.
-- `app.js`: aplicativo; `sw.js`: cache offline.
+## Compatibilidade
+
+- Cada JSON deve conter 66 livros na ordem da ARC, com abreviações correspondentes e versículos não vazios.
+- As traduções AVM, MATOS e PASTORAL têm 3 capítulos em Malaquias, contra 4 na ARC; a leitura individual respeita a estrutura de cada tradução.
+- **Não há mapeamentos especiais:** a comparação é exibida somente quando o capítulo existe e tem a mesma quantidade de versículos da ARC. Mesmo assim, igualdade de contagem não garante equivalência textual perfeita.
+- Quando a divisão diverge, a comparação é sinalizada como indisponível; o texto permanece acessível na leitura individual.

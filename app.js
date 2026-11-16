@@ -14,7 +14,10 @@ const translations = [
  ['AA','João Ferreira de Almeida Atualizada','—','—'],
  ['RC69','Almeida Revista e Corrigida (1969)','1969','SBB'],
  ['BPT09','A Bíblia para Todos — Edição Comum','2009','Sociedade Bíblica de Portugal'],
- ['NVI2011','Nova Versão Internacional (2011)','2011','Biblica']
+ ['NVI2011','Nova Versão Internacional (2011)','2011','Biblica'],
+ ['AVM','Bíblia Ave-Maria','—','Ave-Maria'],
+ ['MATOS','Bíblia Matos Soares','—','—'],
+ ['PASTORAL','Bíblia Pastoral','—','Paulus']
 ];
 const state = {page:'home', mode:'read', translation:'ARC', book:0, chapter:0, verse:0};
 const library = Object.create(null);
@@ -147,7 +150,7 @@ function comparisonPage(){
   $('#comparison-progress-fill').style.width=pct+'%';
   $('#comparison-progress-label').textContent=total===0?'Selecione traduções no catálogo':pct===100?'Carregamento concluído': 'Carregando traduções…';
   $('#comparison-results').innerHTML=loaded.map(t=>{
-   const other=library[t[0]],otherBook=other.find(x=>x.abbrev===b.abbrev);
+   const other=library[t[0]],otherBook=other[state.book];
    const target=otherBook?.chapters?.[c],ref=target?.[v],sameCount=Array.isArray(target)&&target.length===b.chapters[c].length;
    const content=sameCount&&typeof ref==='string'?esc(ref):'<span class="hint">Referência indisponível ou com divisão de versículos diferente. Não exibimos texto potencialmente incorreto.</span>';
    return `<section class="compare-item interactive-translation" data-open-translation="${t[0]}" tabindex="0" role="button" aria-label="Abrir ${esc(t[1])} no capítulo completo"><b>${t[0]}</b><small>${esc(t[1])}</small><p>${content}</p></section>`;
@@ -168,7 +171,7 @@ function comparisonPage(){
 }
 function moveVerse(delta){
  const b=book(),n=state.verse+delta;
- if(n<0){if(state.chapter>0){state.chapter--;state.verse=b.chapters[state.chapter].length-1;}else if(state.book>0){state.book--;state.chapter=readerBook().chapters.length-1;state.verse=book().chapters[state.chapter].length-1;}else return;}
+ if(n<0){if(state.chapter>0){state.chapter--;state.verse=b.chapters[state.chapter].length-1;}else if(state.book>0){state.book--;state.chapter=book().chapters.length-1;state.verse=book().chapters[state.chapter].length-1;}else return;}
  else if(n>=b.chapters[state.chapter].length){if(state.chapter<b.chapters.length-1){state.chapter++;state.verse=0;}else if(state.book<65){state.book++;state.chapter=0;state.verse=0;}else return;}
  else state.verse=n;
  history.replaceState(snapshot(),'','#comparison');render();window.scrollTo(0,0);
